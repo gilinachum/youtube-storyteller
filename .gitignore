@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Build artifacts
+dist/
+frontend/dist/
+*.zip
+cdk.out/
+
+# Environment & secrets
+.env
+.env.*
+*.pem
+
+# AgentCore local config (contains account-specific ARNs)
+.bedrock_agentcore.yaml
+.bedrock_agentcore/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+
+# CDK
+infra/cdk.out/
+
+# Logs
+*.log

@@ -1,0 +1,46 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    direction: rtl;
+    font-family: 'Heebo', Arial, sans-serif;
+  }
+  body {
+    @apply bg-gray-950 text-gray-100 antialiased;
+  }
+}
+
+@layer components {
+  .message-bubble {
+    @apply rounded-2xl px-4 py-3 max-w-[85%] leading-relaxed;
+  }
+  .message-user {
+    @apply bg-brand-600 text-white self-end;
+  }
+  .message-assistant {
+    @apply bg-gray-800 text-gray-100 self-start;
+  }
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: #374151 transparent;
+  }
+}
+
+/* Markdown inside assistant messages */
+.prose-rtl h1, .prose-rtl h2, .prose-rtl h3 {
+  @apply font-bold text-white mt-4 mb-2;
+}
+.prose-rtl h1 { @apply text-xl; }
+.prose-rtl h2 { @apply text-lg; }
+.prose-rtl h3 { @apply text-base; }
+.prose-rtl p  { @apply mb-2 leading-relaxed; }
+.prose-rtl ul { @apply list-disc list-inside mb-2 space-y-1; }
+.prose-rtl ol { @apply list-decimal list-inside mb-2 space-y-1; }
+.prose-rtl li { @apply text-gray-200; }
+.prose-rtl strong { @apply font-semibold text-white; }
+.prose-rtl em { @apply italic text-gray-300; }
+.prose-rtl hr { @apply border-gray-600 my-3; }
+.prose-rtl code { @apply bg-gray-700 rounded px-1 text-sm font-mono text-brand-300; }
+.prose-rtl blockquote { @apply border-r-4 border-brand-500 pr-3 text-gray-300 italic my-2; }

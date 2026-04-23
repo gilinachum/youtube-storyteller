@@ -1,0 +1,190 @@
+import { useEffect, useRef, useCallback } from 'react'
+import ReactMarkdown, { type Components } from 'react-markdown'
+
+const FILE_ICON_MAP: Record<string, string> = {
+  pdf: '📕',
+  pptx: '📊',
+  ppt: '📊',
+  doc: '📄',
+  docx: '📄',
+  txt: '📄',
+  md: '📄',
+}
+
+function getFileIcon(filename: string): string {
+  const ext = filename.split('.').pop()?.toLowerCase() || ''
+  return FILE_ICON_MAP[ext] || '📁'
+}
+
+/** Parse user message content — render file attachment refs as styled cards */
+function UserMessage({ content }: { content: string }) {
+  // Match [קובץ מצורף: filename (s3_key)] or 📎 filename patterns
+  const fileRefRegex = /\[קובץ מצורף: (.+?) \((?:s3:\/\/)?(.+?)\)\]/g
+  const clipRegex = /\n?📎 .+/g
+
+  // Extract file refs
+  const files: { filename: string; key: string }[] = []
+  let match
+  while ((match = fileRefRegex.exec(content)) !== null) {
+    files.push({ filename: match[1], key: match[2] })
+  }
+
+  // Get the clean text (remove file ref lines and 📎 lines)
+  let cleanText = content
+    .replace(fileRefRegex, '')
+    .replace(clipRegex, '')
+    .trim()
+
+  return (
+    <div>
+      {cleanText && <p>{cleanText}</p>}
+      {files.length > 0 && (
+        <div className={`flex flex-col gap-1.5 ${cleanText ? 'mt-2' : ''}`}>
+          {files.map((f, i) => (
+            <div key={i} className="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-2 text-sm">
+              <span className="text-base">{getFileIcon(f.filename)}</span>
+              <span className="truncate max-w-[200px] text-white/90">{f.filename}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Custom markdown renderers — turns S3 presigned download links into file cards */
+const markdownComponents: Components = {
+  a({ href, children }) {
+    // Detect S3 presigned download links
+    if (href && (href.includes('.s3.') || href.includes('s3.amazonaws.com')) && href.includes('X-Amz-Signature')) {
+      // Extract filename from URL path
+      const urlPath = new URL(href).pathname
+      const filename = decodeURIComponent(urlPath.split('/').pop() || 'document')
+        .replace(/^[a-f0-9]{8}-/, '') // strip file_id prefix
+      const ext = filename.split('.').pop()?.toLowerCase() || ''
+      const icon = FILE_ICON_MAP[ext] || '\ud83d\udcc1'
+
+      return (
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-2 bg-white/10 hover:bg-white/15 transition-colors rounded-lg px-3 py-2 text-sm no-underline my-2 max-w-[280px]"
+        >
+          <span className="text-xl flex-shrink-0">{icon}</span>
+          <span className="truncate text-white/90">{filename}</span>
+          <span className="text-white/50 mr-auto text-xs">\u2b07</span>
+        </a>
+      )
+    }
+
+    // Regular links
+    return (
+      <a href={href} target="_blank" rel="noopener noreferrer" className="text-brand-400 underline">
+        {children}
+      </a>
+    )
+  },
+}
+
+interface Message {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  timestamp: number
+}
+
+interface Props {
+  messages: Message[]
+  loading: boolean
+  loadingText?: string
+  progressLabel?: string
+  streamingContent?: string
+}
+
+export default function ChatMessages({ messages, loading, loadingText, progressLabel, streamingContent }: Props) {
+  const bottomRef = useRef<HTMLDivElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const isStickRef = useRef(true)
+
+  // Track if user is near the bottom (within 100px)
+  const handleScroll = useCallback(() => {
+    const el = containerRef.current
+    if (!el) return
+    const threshold = 100
+    isStickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < threshold
+  }, [])
+
+  // Auto-scroll only if user hasn't scrolled up
+  useEffect(() => {
+    if (isStickRef.current) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [messages, loading, streamingContent])
+
+  // Always scroll to bottom when user sends a new message
+  useEffect(() => {
+    const lastMsg = messages[messages.length - 1]
+    if (lastMsg?.role === 'user') {
+      isStickRef.current = true
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [messages.length])
+
+  return (
+    <div ref={containerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto scrollbar-thin px-4 py-6 space-y-4">
+      {messages.map(msg => (
+        <div
+          key={msg.id}
+          className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+        >
+          {msg.role === 'assistant' && (
+            <div className="w-8 h-8 rounded-full bg-brand-600 flex items-center justify-center text-sm ml-2 flex-shrink-0 mt-1">
+              🎬
+            </div>
+          )}
+          <div className={`message-bubble ${msg.role === 'user' ? 'message-user' : 'message-assistant'}`}>
+            {msg.role === 'user' ? (
+              <UserMessage content={msg.content} />
+            ) : (
+              <div className="prose-rtl">
+                <ReactMarkdown components={markdownComponents}>{msg.content}</ReactMarkdown>
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
+
+      {loading && (
+        <div className="flex justify-start">
+          <div className="w-8 h-8 rounded-full bg-brand-600 flex items-center justify-center text-sm ml-2 flex-shrink-0">
+            🎬
+          </div>
+          <div className="message-bubble message-assistant">
+            <div className="flex items-center gap-2 text-gray-400">
+              <div className="flex gap-1">
+                <span className="w-2 h-2 bg-brand-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-2 h-2 bg-brand-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="w-2 h-2 bg-brand-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+              </div>
+              <span className="text-sm">{loadingText || 'חוקר ומנתח...'}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Progress indicator during streaming */}
+      {progressLabel && !loading && (
+        <div className="flex justify-start">
+          <div className="w-8 h-8 flex-shrink-0 ml-2" />
+          <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl px-4 py-2 text-gray-400 text-sm flex items-center gap-2">
+            <div className="w-2 h-2 bg-brand-400 rounded-full animate-pulse" />
+            <span>{progressLabel}</span>
+          </div>
+        </div>
+      )}
+
+      <div ref={bottomRef} />
+    </div>
+  )
+}
