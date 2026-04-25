@@ -191,11 +191,18 @@ export async function streamChat(opts: StreamChatOptions): Promise<void> {
  * Returns the transcribed text.
  */
 export async function transcribeAudio(audioBlob: Blob, email: string, sessionId: string): Promise<{ text: string; language: string }> {
-  // Convert blob to base64
+  // Convert blob to base64 (chunk to avoid stack overflow on large arrays)
   const buffer = await audioBlob.arrayBuffer()
-  const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)))
+  const bytes = new Uint8Array(buffer)
+  let binary = ''
+  const chunkSize = 8192
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize))
+  }
+  const base64 = btoa(binary)
 
-  const res = await fetch(`${API_BASE}/transcribe`, {
+  // Step 1: Start transcription job
+  const startRes = await fetch(`${API_BASE}/transcribe`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -205,10 +212,30 @@ export async function transcribeAudio(audioBlob: Blob, email: string, sessionId:
     }),
   })
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: 'Transcription failed' }))
-    throw new Error(err.error || 'Transcription failed')
+  if (!startRes.ok) {
+    const err = await startRes.json().catch(() => ({ error: 'Transcription failed' }))
+    throw new Error(err.error || 'Failed to start transcription')
   }
 
-  return res.json()
+  const { job_name } = await startRes.json()
+
+  // Step 2: Poll for completion (every 2s, up to 2 minutes)
+  const maxAttempts = 60
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise(r => setTimeout(r, 2000))
+
+    const pollRes = await fetch(`${API_BASE}/transcribe/${encodeURIComponent(job_name)}`)
+    if (!pollRes.ok) continue
+
+    const result = await pollRes.json()
+
+    if (result.status === 'COMPLETED') {
+      return { text: result.text, language: result.language }
+    } else if (result.status === 'FAILED') {
+      throw new Error(result.error || 'Transcription failed')
+    }
+    // IN_PROGRESS — continue polling
+  }
+
+  throw new Error('Transcription timed out')
 }

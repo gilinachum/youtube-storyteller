@@ -13,6 +13,7 @@ dependencies = [
     "requests>=2.33.1",
     "strands-agents>=1.36.0",
     "tavily-python>=0.7.23",
+    "opentelemetry-exporter-otlp-proto-http>=1.40.0",
 ]
 
 [dependency-groups]

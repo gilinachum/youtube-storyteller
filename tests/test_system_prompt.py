@@ -51,8 +51,9 @@ class TestSystemPrompt:
     def test_video_constraints(self):
         from agent.system_prompt import build_system_prompt
         prompt = build_system_prompt()
-        assert "3–7 minutes" in prompt or "3-7 minutes" in prompt
-        assert "10 minutes" in prompt
+        assert "5 minutes" in prompt
+        assert "7 minutes" in prompt
+        assert "split" in prompt.lower() or "פצל" in prompt
 
     def test_content_levels(self):
         """Verify L100-L400 content levels are in the prompt."""
@@ -87,8 +88,21 @@ class TestSystemPrompt:
     def test_methodology_included(self):
         from agent.system_prompt import build_system_prompt
         prompt = build_system_prompt()
-        # The methodology.md content should be embedded
         assert "methodology" in prompt.lower() or "הוק" in prompt or "hook" in prompt.lower()
+
+    def test_enthusiasm_section(self):
+        """Verify tone/energy section exists."""
+        from agent.system_prompt import build_system_prompt
+        prompt = build_system_prompt()
+        assert "Tone & Energy" in prompt or "enthusias" in prompt.lower()
+        assert "פוטנציאל" in prompt
+
+    def test_self_review_process(self):
+        """Verify self-review process is in the prompt."""
+        from agent.system_prompt import build_system_prompt
+        prompt = build_system_prompt()
+        assert "Self-Review" in prompt
+        assert "ריוויו פנימי" in prompt
 
     def test_virality_included(self):
         from agent.system_prompt import build_system_prompt

@@ -18,7 +18,11 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_DIR"
 
 # Load .env if present
-[ -f "$PROJECT_DIR/.env" ] && source "$PROJECT_DIR/.env"
+if [ -f "$PROJECT_DIR/.env" ]; then
+  set -a
+  source "$PROJECT_DIR/.env"
+  set +a
+fi
 
 AGENT_RUNTIME_ID="${AGENT_RUNTIME_ID:?Set AGENT_RUNTIME_ID env var}"
 REGION="${BEDROCK_REGION:-us-east-1}"
@@ -40,7 +44,7 @@ uv run agentcore deploy \
 
 echo ""
 echo "🔐 Restoring JWT authorizer (deploy resets it)..."
-python3 << PYEOF
+uv run python3 << PYEOF
 import boto3
 client = boto3.client("bedrock-agentcore-control", region_name="${REGION}")
 current = client.get_agent_runtime(agentRuntimeId="${AGENT_RUNTIME_ID}")

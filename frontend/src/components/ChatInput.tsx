@@ -4,7 +4,7 @@ interface Props {
   onSend: (message: string, files?: UploadedFile[]) => void
   disabled: boolean
   onUpload: (file: File) => Promise<UploadedFile | null>
-  onVoice?: (audioBlob: Blob) => Promise<void>
+  onTranscribe?: (audioBlob: Blob) => Promise<string>
 }
 
 export interface UploadedFile {
@@ -13,12 +13,13 @@ export interface UploadedFile {
   file_id: string
 }
 
-export default function ChatInput({ onSend, disabled, onUpload, onVoice }: Props) {
+export default function ChatInput({ onSend, disabled, onUpload, onTranscribe }: Props) {
   const [text, setText] = useState('')
   const [attachedFiles, setAttachedFiles] = useState<UploadedFile[]>([])
   const [uploading, setUploading] = useState(false)
   const [recording, setRecording] = useState(false)
   const [transcribing, setTranscribing] = useState(false)
+  const cancelledRef = useRef(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -87,11 +88,29 @@ export default function ChatInput({ onSend, disabled, onUpload, onVoice }: Props
         // Stop all tracks
         stream.getTracks().forEach(t => t.stop())
 
+        // If cancelled, discard the recording
+        if (cancelledRef.current) {
+          cancelledRef.current = false
+          return
+        }
+
         const blob = new Blob(chunksRef.current, { type: mimeType })
-        if (blob.size > 0 && onVoice) {
+        if (blob.size > 0 && onTranscribe) {
           setTranscribing(true)
           try {
-            await onVoice(blob)
+            const transcribedText = await onTranscribe(blob)
+            if (transcribedText.trim()) {
+              // Put transcribed text into the textarea (don't auto-send)
+              setText(prev => prev ? `${prev} ${transcribedText.trim()}` : transcribedText.trim())
+              // Auto-resize textarea
+              setTimeout(() => {
+                if (textareaRef.current) {
+                  textareaRef.current.style.height = 'auto'
+                  textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`
+                  textareaRef.current.focus()
+                }
+              }, 50)
+            }
           } finally {
             setTranscribing(false)
           }
@@ -106,7 +125,8 @@ export default function ChatInput({ onSend, disabled, onUpload, onVoice }: Props
     }
   }
 
-  const stopRecording = () => {
+  const stopRecording = (cancel = false) => {
+    if (cancel) cancelledRef.current = true
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop()
     }
@@ -166,47 +186,83 @@ export default function ChatInput({ onSend, disabled, onUpload, onVoice }: Props
           onChange={handleFileSelect}
         />
 
-        {/* Voice record button */}
-        <button
-          type="button"
-          onClick={recording ? stopRecording : startRecording}
-          disabled={disabled || uploading || transcribing}
-          className={`p-3 rounded-xl transition-colors flex-shrink-0 ${
-            recording
-              ? 'bg-red-600 hover:bg-red-500 text-white animate-pulse'
-              : transcribing
+        {/* Voice record — when recording show cancel + send buttons */}
+        {recording ? (
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => stopRecording(true)}
+              className="p-3 rounded-xl bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors"
+              title="בטל הקלטה"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                <path fillRule="evenodd" d="M5.47 5.47a.75.75 0 011.06 0L12 10.94l5.47-5.47a.75.75 0 111.06 1.06L13.06 12l5.47 5.47a.75.75 0 11-1.06 1.06L12 13.06l-5.47 5.47a.75.75 0 01-1.06-1.06L10.94 12 5.47 6.53a.75.75 0 010-1.06z" clipRule="evenodd" />
+              </svg>
+            </button>
+            <div className="flex items-center gap-2 px-3 text-red-400 text-sm">
+              <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+              <span>מקליט...</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => stopRecording(false)}
+              className="p-3 rounded-xl bg-brand-600 hover:bg-brand-500 text-white transition-colors"
+              title="שלח הקלטה"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
+              </svg>
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={startRecording}
+            disabled={disabled || uploading || transcribing}
+            className={`p-3 rounded-xl transition-colors flex-shrink-0 ${
+              transcribing
                 ? 'bg-gray-800 text-brand-400'
                 : 'hover:bg-gray-800 text-gray-400 hover:text-gray-200'
-          } disabled:opacity-50 disabled:cursor-not-allowed`}
-          title={recording ? 'עצור הקלטה' : transcribing ? 'מתמלל...' : 'הקלט הודעה קולית'}
-        >
-          {transcribing ? (
-            <svg className="w-5 h-5 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
-          ) : recording ? (
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
-              <path fillRule="evenodd" d="M4.5 7.5a3 3 0 013-3h9a3 3 0 013 3v9a3 3 0 01-3 3h-9a3 3 0 01-3-3v-9z" clipRule="evenodd" />
-            </svg>
-          ) : (
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
-            </svg>
-          )}
-        </button>
+            } disabled:opacity-50 disabled:cursor-not-allowed`}
+            title={transcribing ? 'מתמלל...' : 'הקלט הודעה קולית'}
+          >
+            {transcribing ? (
+              <svg className="w-5 h-5 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
+              </svg>
+            )}
+          </button>
+        )}
 
-        <textarea
-          ref={textareaRef}
-          value={text}
-          onChange={e => setText(e.target.value)}
-          onKeyDown={handleKeyDown}
-          onInput={handleInput}
-          placeholder="כתוב לי כאן..."
-          disabled={disabled}
-          rows={1}
-          className="flex-1 resize-none px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition text-sm leading-relaxed disabled:opacity-50 disabled:cursor-not-allowed"
-        />
+        <div className="relative flex-1">
+          <textarea
+            ref={textareaRef}
+            value={text}
+            onChange={e => setText(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onInput={handleInput}
+            placeholder={transcribing ? 'מתמלל...' : 'כתוב לי כאן...'}
+            disabled={disabled || transcribing}
+            rows={1}
+            className="w-full resize-none px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition text-sm leading-relaxed disabled:opacity-50 disabled:cursor-not-allowed"
+          />
+          {transcribing && (
+            <div className="absolute inset-0 flex items-center justify-center bg-gray-800/80 rounded-xl">
+              <div className="flex items-center gap-2 text-brand-400 text-sm">
+                <svg className="w-4 h-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                <span>מתמלל הודעה קולית...</span>
+              </div>
+            </div>
+          )}
+        </div>
         <button
           type="submit"
           disabled={disabled || (!text.trim() && attachedFiles.length === 0)}
@@ -218,7 +274,6 @@ export default function ChatInput({ onSend, disabled, onUpload, onVoice }: Props
           </svg>
         </button>
       </form>
-      <p className="text-gray-600 text-xs text-center mt-2">Enter לשליחה · Shift+Enter לשורה חדשה</p>
     </div>
   )
 }

@@ -160,15 +160,17 @@ class ApiStack(Stack):
             architecture=lambda_.Architecture.ARM_64,
             handler="transcribe.handler",
             code=lambda_.Code.from_asset(os.path.join(PROJECT_ROOT, "api")),
-            timeout=Duration.seconds(60),  # Transcribe can take up to ~30s
+            timeout=Duration.seconds(30),  # Start job + upload only, no polling
             memory_size=256,
             role=lambda_role,
             environment=common_env,
         )
 
-        # POST /transcribe
+        # POST /transcribe + GET /transcribe/{job_name}
         transcribe_resource = api.root.add_resource("transcribe")
         transcribe_resource.add_method("POST", apigw.LambdaIntegration(transcribe_fn))
+        transcribe_job_resource = transcribe_resource.add_resource("{job_name}")
+        transcribe_job_resource.add_method("GET", apigw.LambdaIntegration(transcribe_fn))
 
         # ── AgentCore Runtime Streaming Integration (JWT auth) ─────────────
         # POST /chat-stream → AgentCore Runtime /invocations (streaming)

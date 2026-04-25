@@ -12,7 +12,11 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 FRONTEND_DIR="$PROJECT_DIR/frontend"
 
 # Load .env if present
-[ -f "$PROJECT_DIR/.env" ] && source "$PROJECT_DIR/.env"
+if [ -f "$PROJECT_DIR/.env" ]; then
+  set -a
+  source "$PROJECT_DIR/.env"
+  set +a
+fi
 
 S3_BUCKET="${FRONTEND_S3_BUCKET:?Set FRONTEND_S3_BUCKET env var}"
 CF_DISTRIBUTION="${CF_DISTRIBUTION_ID:?Set CF_DISTRIBUTION_ID env var}"

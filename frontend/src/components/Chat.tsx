@@ -23,14 +23,19 @@ interface Props {
 const WELCOME_MESSAGE: Message = {
   id: 'welcome',
   role: 'assistant',
-  content: `אני StoryTeller — העוזר שלך לתכנון סרטוני YouTube בעברית, עם התמחות בתוכן טכנולוגי ו-AWS.
+  content: `אני StoryTeller — העוזר שלך לתכנון סרטוני YouTube בעברית.
 
-מה אני יכול לעשות בשבילך?
+**מה אני יכול לעשות בשבילך?**
 
-🔗 לנתח URL, PDF, או PPTX — תן לי חומר גלם ואני אהפוך אותו לתכנית סרטון
-📈 לחקור טרנדים — אגלה מה עובד ביוטיוב עכשיו בנושא שלך
-✍️ לכתוב אאוטליין או סקריפט מלא — בעברית, מותאם לשימור צופים מקסימלי
-🎯 לייעץ על כותרות, תמונות ממוזערות ו-SEO — כדי שהסרטון יגיע לכמה שיותר אנשים
+- 🔗 **לנתח חומר גלם** — תן לי URL, PDF, או PPTX ואני אהפוך אותו לתכנית סרטון
+
+- 📈 **לחקור טרנדים** — אגלה מה עובד ביוטיוב עכשיו בנושא שלך
+
+- ✍️ **לכתוב אאוטליין או סקריפט מלא** — בעברית, מותאם לשימור צופים מקסימלי
+
+- 🎨 **לייצר תמונות ממוזערות (Thumbnails)** — תמונות מעוצבות לסרטון עם אפשרות לעיצוב איטרטיבי
+
+- 🎯 **לייעץ על כותרות ו-SEO** — כדי שהסרטון יגיע לכמה שיותר אנשים
 
 על מה הסרטון הבא שלך? 🚀`,
   timestamp: Date.now(),
@@ -151,17 +156,21 @@ export default function Chat({ email, onLogout }: Props) {
       fileRefs,
       signal: controller.signal,
       onChunk: (chunk) => {
+        // Strip keepalive markers before processing
+        const cleaned = chunk.replace(/__KEEPALIVE__/g, '')
+        if (!cleaned) return  // Pure keepalive chunk — skip
+
         // Raw chunk from ReadableStream — accumulate for SSE parsing
-        setStreamingContent(prev => prev + chunk)
+        setStreamingContent(prev => prev + cleaned)
 
         // Scan for progress events in the new chunk
         // Progress events now come as: __PROGRESS__{"type":"progress",...}
-        const prefixMatch = chunk.match(/__PROGRESS__.*?"label":\s*"([^"]+)"/)
+        const prefixMatch = cleaned.match(/__PROGRESS__.*?"label":\s*"([^"]+)"/)
         if (prefixMatch) {
           setProgressLabel(prefixMatch[1])
         } else {
           // Fallback: legacy format without prefix
-          const progressMatch = chunk.match(/"type":\s*"progress".*?"label":\s*"([^"]+)"/)
+          const progressMatch = cleaned.match(/"type":\s*"progress".*?"label":\s*"([^"]+)"/)
           if (progressMatch) {
             setProgressLabel(progressMatch[1])
           }
@@ -279,17 +288,19 @@ export default function Chat({ email, onLogout }: Props) {
     }
   }, [email, currentSessionId])
 
-  const handleVoice = useCallback(async (audioBlob: Blob) => {
+  const handleTranscribe = useCallback(async (audioBlob: Blob): Promise<string> => {
     try {
       const result = await transcribeAudio(audioBlob, email, currentSessionId)
-      if (result.text && result.text.trim()) {
-        // Send as if the user typed it
-        handleSend(result.text.trim())
-      }
-    } catch (err) {
+      return result.text || ''
+    } catch (err: any) {
       console.error('Transcription failed:', err)
+      const errorMsg = err?.message?.includes('timed out')
+        ? 'התמלול נכשל — נסה הודעה קצרה יותר'
+        : `שגיאה בתמלול: ${err?.message || 'unknown'}`
+      alert(errorMsg)
+      return ''
     }
-  }, [email, currentSessionId, handleSend])
+  }, [email, currentSessionId])
 
   const handleShare = useCallback(async (shareWithEmail: string) => {
     try {
@@ -410,8 +421,9 @@ export default function Chat({ email, onLogout }: Props) {
           loadingText={progressLabel || 'מתחבר לסוכן...'}
           progressLabel={streamingContent ? progressLabel : ''}
           streamingContent={streamingContent}
+          email={email}
         />
-        <ChatInput onSend={handleSend} disabled={loading} onUpload={handleUpload} onVoice={handleVoice} />
+        <ChatInput onSend={handleSend} disabled={loading} onUpload={handleUpload} onTranscribe={handleTranscribe} />
       </div>
 
       {showShareModal && (
@@ -446,6 +458,7 @@ function parseStreamData(raw: string): string {
       if (typeof parsed === 'string') {
         // Check if it's a progress event (prefixed or raw JSON)
         if (parsed.startsWith('__PROGRESS__')) continue
+        if (parsed === '__KEEPALIVE__') continue
         // Also catch legacy un-prefixed progress JSON that got string-wrapped
         if (parsed.includes('"type"') && parsed.includes('"progress"')) {
           try {

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
+import { getFileDownloadUrl } from '../api'
 
 const FILE_ICON_MAP: Record<string, string> = {
   pdf: '📕',
@@ -17,7 +18,7 @@ function getFileIcon(filename: string): string {
 }
 
 /** Parse user message content — render file attachment refs as styled cards */
-function UserMessage({ content }: { content: string }) {
+function UserMessage({ content, email }: { content: string; email?: string }) {
   // Match [קובץ מצורף: filename (s3_key)] or 📎 filename patterns
   const fileRefRegex = /\[קובץ מצורף: (.+?) \((?:s3:\/\/)?(.+?)\)\]/g
   const clipRegex = /\n?📎 .+/g
@@ -41,10 +42,31 @@ function UserMessage({ content }: { content: string }) {
       {files.length > 0 && (
         <div className={`flex flex-col gap-1.5 ${cleanText ? 'mt-2' : ''}`}>
           {files.map((f, i) => (
-            <div key={i} className="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-2 text-sm">
+            <a
+              key={i}
+              href="#"
+              onClick={async (e) => {
+                e.preventDefault()
+                try {
+                  // Extract session_id and file_id from s3 key: uploads/email/session_id/file_id-filename
+                  const parts = f.key.replace(/^s3:\/\/[^/]+\//, '').split('/')
+                  const sessionId = parts.length >= 3 ? parts[2] : ''
+                  const fileIdMatch = parts[parts.length - 1]?.match(/^([a-f0-9-]+?)-/)
+                  const fileId = fileIdMatch ? fileIdMatch[1] : ''
+                  if (sessionId && fileId) {
+                    const url = await getFileDownloadUrl(sessionId, fileId, email || '')
+                    window.open(url, '_blank')
+                  }
+                } catch {
+                  // Fallback: can't download
+                }
+              }}
+              className="flex items-center gap-2 bg-white/10 hover:bg-white/15 transition-colors rounded-lg px-3 py-2 text-sm cursor-pointer"
+            >
               <span className="text-base">{getFileIcon(f.filename)}</span>
               <span className="truncate max-w-[200px] text-white/90">{f.filename}</span>
-            </div>
+              <span className="text-white/50 mr-auto text-xs">⬇</span>
+            </a>
           ))}
         </div>
       )}
@@ -85,6 +107,20 @@ const markdownComponents: Components = {
       </a>
     )
   },
+  // Render tables with horizontal scroll and styling
+  table({ children }) {
+    return (
+      <div className="overflow-x-auto my-3 rounded-lg border border-gray-700">
+        <table className="min-w-full text-sm border-collapse">{children}</table>
+      </div>
+    )
+  },
+  th({ children }) {
+    return <th className="bg-gray-800 px-3 py-2 text-right font-medium text-gray-300 border-b border-gray-700">{children}</th>
+  },
+  td({ children }) {
+    return <td className="px-3 py-2 text-right border-b border-gray-800">{children}</td>
+  },
 }
 
 interface Message {
@@ -100,25 +136,30 @@ interface Props {
   loadingText?: string
   progressLabel?: string
   streamingContent?: string
+  email?: string
 }
 
-export default function ChatMessages({ messages, loading, loadingText, progressLabel, streamingContent }: Props) {
+export default function ChatMessages({ messages, loading, loadingText, progressLabel, streamingContent, email }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const isStickRef = useRef(true)
 
-  // Track if user is near the bottom (within 100px)
+  // Track if user is near the bottom (within 150px)
   const handleScroll = useCallback(() => {
     const el = containerRef.current
     if (!el) return
-    const threshold = 100
+    const threshold = 150
     isStickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < threshold
   }, [])
 
   // Auto-scroll only if user hasn't scrolled up
   useEffect(() => {
     if (isStickRef.current) {
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+      // Use instant scroll during streaming to avoid smooth animation conflicts
+      const el = containerRef.current
+      if (el) {
+        el.scrollTop = el.scrollHeight
+      }
     }
   }, [messages, loading, streamingContent])
 
@@ -136,16 +177,11 @@ export default function ChatMessages({ messages, loading, loadingText, progressL
       {messages.map(msg => (
         <div
           key={msg.id}
-          className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+          className="flex justify-end"
         >
-          {msg.role === 'assistant' && (
-            <div className="w-8 h-8 rounded-full bg-brand-600 flex items-center justify-center text-sm ml-2 flex-shrink-0 mt-1">
-              🎬
-            </div>
-          )}
-          <div className={`message-bubble ${msg.role === 'user' ? 'message-user' : 'message-assistant'}`}>
+          <div className={`${msg.role === 'user' ? 'message-bubble message-user' : 'message-assistant px-1 py-2 max-w-[90%]'}`}>
             {msg.role === 'user' ? (
-              <UserMessage content={msg.content} />
+              <UserMessage content={msg.content} email={email} />
             ) : (
               <div className="prose-rtl">
                 <ReactMarkdown components={markdownComponents}>{msg.content}</ReactMarkdown>
@@ -156,11 +192,8 @@ export default function ChatMessages({ messages, loading, loadingText, progressL
       ))}
 
       {loading && (
-        <div className="flex justify-start">
-          <div className="w-8 h-8 rounded-full bg-brand-600 flex items-center justify-center text-sm ml-2 flex-shrink-0">
-            🎬
-          </div>
-          <div className="message-bubble message-assistant">
+        <div className="flex justify-end">
+          <div className="message-assistant px-1 py-2">
             <div className="flex items-center gap-2 text-gray-400">
               <div className="flex gap-1">
                 <span className="w-2 h-2 bg-brand-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
@@ -175,8 +208,7 @@ export default function ChatMessages({ messages, loading, loadingText, progressL
 
       {/* Progress indicator during streaming */}
       {progressLabel && !loading && (
-        <div className="flex justify-start">
-          <div className="w-8 h-8 flex-shrink-0 ml-2" />
+        <div className="flex justify-end">
           <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl px-4 py-2 text-gray-400 text-sm flex items-center gap-2">
             <div className="w-2 h-2 bg-brand-400 rounded-full animate-pulse" />
             <span>{progressLabel}</span>

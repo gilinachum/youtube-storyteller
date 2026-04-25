@@ -17,10 +17,10 @@
     @apply rounded-2xl px-4 py-3 max-w-[85%] leading-relaxed;
   }
   .message-user {
-    @apply bg-brand-600 text-white self-end;
+    @apply bg-brand-600/80 text-white;
   }
   .message-assistant {
-    @apply bg-gray-800 text-gray-100 self-start;
+    @apply text-gray-100 max-w-full;
   }
   .scrollbar-thin {
     scrollbar-width: thin;
@@ -43,4 +43,6 @@
 .prose-rtl em { @apply italic text-gray-300; }
 .prose-rtl hr { @apply border-gray-600 my-3; }
 .prose-rtl code { @apply bg-gray-700 rounded px-1 text-sm font-mono text-brand-300; }
+.prose-rtl pre { @apply bg-gray-800 rounded-lg p-3 my-2 overflow-x-auto; direction: ltr; text-align: left; }
+.prose-rtl pre code { @apply bg-transparent p-0 text-sm; }
 .prose-rtl blockquote { @apply border-r-4 border-brand-500 pr-3 text-gray-300 italic my-2; }

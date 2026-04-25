@@ -12,7 +12,11 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_DIR"
 
 # Load .env if present
-[ -f "$PROJECT_DIR/.env" ] && source "$PROJECT_DIR/.env"
+if [ -f "$PROJECT_DIR/.env" ]; then
+  set -a
+  source "$PROJECT_DIR/.env"
+  set +a
+fi
 
 export APP_URL="${APP_URL:?Set APP_URL env var}"
 
