@@ -140,7 +140,33 @@ No 29s timeout — client polls until complete (up to 2 minutes).
 
 ---
 
-## 5. Thumbnail Generation Design _(Planned)_
+## 5. Observability
+
+### AgentCore Observability (ADOT)
+
+StoryTeller uses **AgentCore's built-in observability** via AWS Distro for OpenTelemetry (ADOT), not standalone OTEL.
+
+**How it works:**
+- `observability.enabled: true` in `.bedrock_agentcore.yaml`
+- AgentCore Runtime auto-instruments the agent via ADOT sidecar — no manual setup in code
+- `strands-agents[otel]` provides Strands-native OTEL trace emission
+- `aws-opentelemetry-distro>=0.10.0` included as dependency
+- CloudWatch Transaction Search enabled (one-time account setup)
+
+**What you get:**
+- Trace visualizations in [CloudWatch GenAI Observability dashboard](https://console.aws.amazon.com/cloudwatch/home#gen-ai-observability)
+- Session-correlated spans (via `X-Amzn-Bedrock-AgentCore-Runtime-Session-Id`)
+- Built-in AgentCore metrics: session count, latency, duration, token usage, error rates
+- Strands agent spans: tool calls, model invocations, sub-agent calls
+- Custom span metrics and error breakdowns
+
+**Log groups:**
+- Runtime logs: `/aws/bedrock-agentcore/runtimes/storyteller-AgcWgN5Lbx-DEFAULT`
+- Traces: `aws/spans` (CloudWatch Transaction Search)
+
+---
+
+## 6. Thumbnail Generation Design _(Planned)_
 
 ### Architecture
 
@@ -189,7 +215,7 @@ Main Agent
 
 ---
 
-## 6. Data Model
+## 7. Data Model
 
 ### DynamoDB Tables
 
@@ -219,7 +245,7 @@ Attributes: role, content
 
 ---
 
-## 7. Infrastructure (CDK)
+## 8. Infrastructure (CDK)
 
 | Stack | Resources |
 |-------|-----------|
@@ -237,7 +263,7 @@ Attributes: role, content
 
 ---
 
-## 8. Cost Estimate
+## 9. Cost Estimate
 
 | Component | Per Session |
 |-----------|------------|
@@ -251,7 +277,7 @@ Attributes: role, content
 
 ---
 
-## 9. Project Structure
+## 10. Project Structure
 
 ```
 storyteller/

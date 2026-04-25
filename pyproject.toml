@@ -11,9 +11,9 @@ dependencies = [
     "playwright>=1.58.0",
     "python-pptx>=1.0.2",
     "requests>=2.33.1",
-    "strands-agents>=1.36.0",
+    "strands-agents[otel]>=1.36.0",
     "tavily-python>=0.7.23",
-    "opentelemetry-exporter-otlp-proto-http>=1.40.0",
+    "aws-opentelemetry-distro>=0.10.0",
 ]
 
 [dependency-groups]

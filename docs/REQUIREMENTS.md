@@ -192,7 +192,7 @@ _Version 4.0 | 2026-04-25 | Single source of truth for all features_
 | INF-9 | API Gateway streaming (ResponseTransferMode: STREAM) | ✅ Done |
 | INF-10 | Secrets Manager: tavily, perplexity, firecrawl, GCP API keys | ✅ Done |
 | INF-11 | Cognito user pool (shared) | ✅ Done |
-| INF-12 | OTEL observability (Strands telemetry → ADOT → CloudWatch) | ✅ Done |
+| INF-12 | AgentCore Observability (ADOT auto-instrumentation → CloudWatch GenAI dashboard) | ✅ Done |
 
 ---
 

@@ -28,24 +28,11 @@ from agent.main import create_agent
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-# ── OpenTelemetry / AgentCore observability ─────────────────────────────────
-# When AgentCore is deployed with observability.enabled=true, an ADOT collector
-# sidecar runs alongside the agent and listens on localhost:4318 (HTTP OTLP).
-# StrandsTelemetry reads OTEL_EXPORTER_OTLP_ENDPOINT automatically; if unset
-# it defaults to http://localhost:4318. setup_otlp_exporter() logs a warning on
-# failure so this is safe even when ADOT is not running (e.g. local dev).
-def _setup_telemetry():
-    try:
-        import os
-        from strands.telemetry import StrandsTelemetry
-        os.environ.setdefault("OTEL_SERVICE_NAME", "storyteller")
-        StrandsTelemetry().setup_otlp_exporter()
-        logger.info("AgentCore observability: OTEL exporter configured (endpoint=%s)",
-                    os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318"))
-    except Exception as e:
-        logger.warning("AgentCore observability: OTEL setup skipped (%s)", e)
-
-_setup_telemetry()
+# ── AgentCore Observability ──────────────────────────────────────────────────
+# AgentCore Runtime auto-instruments the agent via ADOT (aws-opentelemetry-distro)
+# when observability.enabled=true in .bedrock_agentcore.yaml. No manual setup needed.
+# Strands emits OTEL traces via strands-agents[otel]. CloudWatch Transaction Search
+# must be enabled (one-time) to view traces in the GenAI Observability dashboard.
 
 # ── DynamoDB tables ──────────────────────────────────────────────────────────
 MESSAGES_TABLE = os.environ.get("MESSAGES_TABLE", "storyteller-messages")
