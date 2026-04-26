@@ -21,13 +21,18 @@ const FILE_ICON_MAP: Record<string, string> = {
 const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'webp', 'gif'])
 
 function isImageFile(filename: string): boolean {
-  const ext = filename.split('.').pop()?.toLowerCase() || ''
-  return IMAGE_EXTENSIONS.has(ext)
+  const lower = filename.toLowerCase()
+  const ext = lower.split('.').pop() || ''
+  // Also check if filename starts with an image extension (e.g. "jpg.153508_20260319")
+  const firstPart = lower.split('.')[0] || ''
+  return IMAGE_EXTENSIONS.has(ext) || IMAGE_EXTENSIONS.has(firstPart)
 }
 
 function getFileIcon(filename: string): string {
-  const ext = filename.split('.').pop()?.toLowerCase() || ''
-  return FILE_ICON_MAP[ext] || '📁'
+  const lower = filename.toLowerCase()
+  const ext = lower.split('.').pop() || ''
+  const firstPart = lower.split('.')[0] || ''
+  return FILE_ICON_MAP[ext] || FILE_ICON_MAP[firstPart] || '📁'
 }
 
 /** Parse user message content — render file attachment refs as styled cards, images as previews */
@@ -53,10 +58,11 @@ function UserMessage({ content, email }: { content: string; email?: string }) {
   const handleFileClick = async (f: { filename: string; key: string }) => {
     try {
       // Key format: uploads/{email}/{session_id}/{file_id}-{filename}
-      // May be prefixed with s3://bucket/ or s3://
-      const rawKey = f.key.replace(/^s3:\/\/[^/]*\//, '')
+      // In message: s3://uploads/{email}/{session_id}/{file_id}-{filename}
+      // Strip only the s3:// protocol prefix (no bucket — 'uploads' IS the first folder)
+      const rawKey = f.key.replace(/^s3:\/\//, '')
       const parts = rawKey.split('/')
-      // Find 'uploads' in the path and use it as anchor
+      // Expected: ['uploads', email, session_id, '{file_id}-{filename}']
       const uploadsIdx = parts.indexOf('uploads')
       if (uploadsIdx >= 0 && parts.length >= uploadsIdx + 4) {
         const sessionId = parts[uploadsIdx + 2]
@@ -65,10 +71,12 @@ function UserMessage({ content, email }: { content: string; email?: string }) {
         if (sessionId && fileId) {
           const url = await getFileDownloadUrl(sessionId, fileId, email || '')
           window.open(url, '_blank')
+          return
         }
       }
-    } catch {
-      // Fallback: can't download
+      console.warn('Could not parse file key for download:', f.key)
+    } catch (err) {
+      console.error('File download failed:', err)
     }
   }
 
@@ -123,7 +131,8 @@ function ImagePreview({ file, email, onClick }: { file: { filename: string; key:
     ;(async () => {
       try {
         // Key format: uploads/{email}/{session_id}/{file_id}-{filename}
-        const rawKey = file.key.replace(/^s3:\/\/[^/]*\//, '')
+        // In message: s3://uploads/... — strip only s3:// protocol
+        const rawKey = file.key.replace(/^s3:\/\//, '')
         const parts = rawKey.split('/')
         const uploadsIdx = parts.indexOf('uploads')
         if (uploadsIdx >= 0 && parts.length >= uploadsIdx + 4) {
