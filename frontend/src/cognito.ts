@@ -33,10 +33,15 @@ export function getStoredTokens(): CognitoTokens | null {
 
 export function storeTokens(tokens: CognitoTokens): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(tokens))
+  // Set auth cookie for CloudFront media access (HttpOnly not possible from JS,
+  // but Secure + SameSite=Lax protects against cross-site attacks)
+  const maxAge = Math.floor((tokens.expiresAt - Date.now()) / 1000)
+  document.cookie = `st-auth=${tokens.idToken}; path=/media; max-age=${maxAge}; secure; samesite=lax`
 }
 
 export function clearTokens(): void {
   localStorage.removeItem(STORAGE_KEY)
+  document.cookie = 'st-auth=; path=/media; max-age=0; secure; samesite=lax'
 }
 
 export function getIdToken(): string | null {

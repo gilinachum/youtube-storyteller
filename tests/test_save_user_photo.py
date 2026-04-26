@@ -8,8 +8,9 @@ import pytest
 class TestSaveUserPhoto:
     """Tests for make_save_user_photo_tool."""
 
+    @patch("agent.tools.save_user_photo.user_namespace", return_value="testns123")
     @patch("agent.tools.save_user_photo._s3")
-    def test_save_photo_success(self, mock_s3):
+    def test_save_photo_success(self, mock_s3, mock_ns):
         from agent.tools.save_user_photo import make_save_user_photo_tool
 
         save_user_photo = make_save_user_photo_tool("user@example.com")
@@ -34,15 +35,16 @@ class TestSaveUserPhoto:
         assert result["success"] is True
         assert result["total_photos"] == 1
         assert result["photo"]["description"] == "Person smiling, outdoor setting"
-        assert result["photo"]["s3_key"].startswith("profile/user@example.com/photos/")
+        assert result["photo"]["s3_key"].startswith("media/testns123/photos/")
 
         # Verify copy was called
         mock_s3.copy_object.assert_called_once()
         copy_args = mock_s3.copy_object.call_args
         assert copy_args.kwargs["CopySource"]["Key"] == "uploads/user@example.com/sess123/abc_photo.jpg"
 
+    @patch("agent.tools.save_user_photo.user_namespace", return_value="testns123")
     @patch("agent.tools.save_user_photo._s3")
-    def test_reject_non_image(self, mock_s3):
+    def test_reject_non_image(self, mock_s3, mock_ns):
         from agent.tools.save_user_photo import make_save_user_photo_tool
 
         save_user_photo = make_save_user_photo_tool("user@example.com")
@@ -57,8 +59,9 @@ class TestSaveUserPhoto:
         assert result["success"] is False
         assert "not an image" in result["error"]
 
+    @patch("agent.tools.save_user_photo.user_namespace", return_value="testns123")
     @patch("agent.tools.save_user_photo._s3")
-    def test_source_not_found(self, mock_s3):
+    def test_source_not_found(self, mock_s3, mock_ns):
         from agent.tools.save_user_photo import make_save_user_photo_tool
 
         save_user_photo = make_save_user_photo_tool("user@example.com")
@@ -73,8 +76,9 @@ class TestSaveUserPhoto:
         assert result["success"] is False
         assert "Cannot access" in result["error"]
 
+    @patch("agent.tools.save_user_photo.user_namespace", return_value="testns123")
     @patch("agent.tools.save_user_photo._s3")
-    def test_appends_to_existing_manifest(self, mock_s3):
+    def test_appends_to_existing_manifest(self, mock_s3, mock_ns):
         from agent.tools.save_user_photo import make_save_user_photo_tool
 
         save_user_photo = make_save_user_photo_tool("user@example.com")

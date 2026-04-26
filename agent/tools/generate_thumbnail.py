@@ -14,6 +14,8 @@ from typing import Optional
 import boto3
 from strands import tool
 
+from agent.media_ns import user_namespace
+
 logger = logging.getLogger(__name__)
 
 # Lazily initialized Gemini client
@@ -37,7 +39,8 @@ def _get_gemini_client():
 
 def _upload_to_s3(image_data: bytes, email: str, session_id: str, filename: str) -> str:
     """Upload generated image to S3 and return the S3 key."""
-    key = f"thumbnails/{email}/{session_id}/{filename}"
+    ns = user_namespace(email)
+    key = f"media/{ns}/thumbnails/{session_id}/{filename}"
     _s3.put_object(
         Bucket=UPLOAD_BUCKET,
         Key=key,
@@ -46,14 +49,6 @@ def _upload_to_s3(image_data: bytes, email: str, session_id: str, filename: str)
     )
     return key
 
-
-def _generate_presigned_url(key: str, expires_in: int = 604800) -> str:
-    """Generate a presigned URL for an S3 object (7 days max)."""
-    return _s3.generate_presigned_url(
-        "get_object",
-        Params={"Bucket": UPLOAD_BUCKET, "Key": key},
-        ExpiresIn=expires_in,
-    )
 
 
 def _load_reference_image(s3_key: str) -> Optional[dict]:
@@ -159,11 +154,13 @@ def make_generate_thumbnail_tool(email: str):
             file_id = str(uuid.uuid4())[:8]
             filename = f"thumb_{file_id}.png"
             s3_key = _upload_to_s3(image_data, email, session_id or "default", filename)
-            url = _generate_presigned_url(s3_key)
 
-            return f"![thumbnail]({url})\n\n" + json.dumps({
+            # Return CloudFront media path (no presigned URL needed)
+            media_path = f"/media/{s3_key.removeprefix('media/')}"
+
+            return f"![thumbnail]({media_path})\n\n" + json.dumps({
                 "success": True,
-                "url": url,
+                "media_path": media_path,
                 "s3_key": s3_key,
                 "filename": filename,
                 "size_bytes": len(image_data),

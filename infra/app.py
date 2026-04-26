@@ -19,7 +19,10 @@ FRONTEND_URL = app.node.try_get_context("frontendUrl") or os.environ.get("FRONTE
 data     = DataStack(app, "StoryTellerData", env=env)
 auth     = AuthStack(app, "StoryTellerAuth", frontend_url=FRONTEND_URL, env=env)
 api      = ApiStack(app, "StoryTellerApi", data_stack=data, auth_stack=auth, env=env)
-frontend = FrontendStack(app, "StoryTellerFrontend", env=env)
+frontend = FrontendStack(app, "StoryTellerFrontend",
+    uploads_bucket_arn=data.uploads_bucket.bucket_arn,
+    env=env,
+)
 
 cdk.Tags.of(app).add("Project", "StoryTeller")
 cdk.Tags.of(app).add("ManagedBy", "CDK")

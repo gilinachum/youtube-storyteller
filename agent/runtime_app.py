@@ -192,8 +192,8 @@ async def invoke(payload, context):
     # Ensure session record exists
     _ensure_session(email, app_session_id, now)
 
-    # Save user message
-    _save_message(app_session_id, "user", message, now)
+    # Save user message (with file refs so they render in history)
+    _save_message(app_session_id, "user", full_prompt, now)
 
     # Tool name to Hebrew progress label mapping
     TOOL_LABELS = {

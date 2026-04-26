@@ -99,7 +99,7 @@ function UserMessage({ content, email }: { content: string; email?: string }) {
   )
 }
 
-/** Lazy-loading image preview that fetches a presigned URL */
+/** Lazy-loading image preview — uses download API for uploaded files */
 function ImagePreview({ file, email, onClick }: { file: { filename: string; key: string }; email: string; onClick: () => void }) {
   const [url, setUrl] = useState<string | null>(null)
   const [error, setError] = useState(false)
@@ -110,16 +110,21 @@ function ImagePreview({ file, email, onClick }: { file: { filename: string; key:
     attempted.current = true
     ;(async () => {
       try {
-        const parts = file.key.replace(/^s3:\/\/[^/]+\//, '').split('/')
-        const sessionId = parts.length >= 3 ? parts[2] : ''
-        const fileIdMatch = parts[parts.length - 1]?.match(/^([a-f0-9-]+?)-/)
-        const fileId = fileIdMatch ? fileIdMatch[1] : ''
-        if (sessionId && fileId) {
-          const downloadUrl = await getFileDownloadUrl(sessionId, fileId, email)
-          setUrl(downloadUrl)
-        } else {
-          setError(true)
+        // Parse S3 key: uploads/{email}/{session_id}/{file_id}-{filename}
+        const rawKey = file.key.replace(/^s3:\/\/[^/]+\//, '')
+        const parts = rawKey.split('/')
+        // Expected: ['uploads', email, session_id, 'file_id-filename']
+        if (parts.length >= 4 && parts[0] === 'uploads') {
+          const sessionId = parts[2]
+          const fileIdMatch = parts[3]?.match(/^([a-f0-9-]+?)-/)
+          const fileId = fileIdMatch ? fileIdMatch[1] : ''
+          if (sessionId && fileId) {
+            const downloadUrl = await getFileDownloadUrl(sessionId, fileId, email)
+            setUrl(downloadUrl)
+            return
+          }
         }
+        setError(true)
       } catch {
         setError(true)
       }

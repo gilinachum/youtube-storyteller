@@ -136,7 +136,7 @@ export default function Chat({ email, onLogout }: Props) {
     const userMsg: Message = {
       id: crypto.randomUUID(),
       role: 'user',
-      content: text + (files && files.length > 0 ? '\n📎 ' + files.map(f => f.filename).join(', ') : ''),
+      content: fullMessage,
       timestamp: Date.now(),
     }
     setMessages(prev => [...prev, userMsg])

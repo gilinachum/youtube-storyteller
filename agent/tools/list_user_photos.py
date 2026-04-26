@@ -10,6 +10,8 @@ import os
 import boto3
 from strands import tool
 
+from agent.media_ns import user_namespace
+
 logger = logging.getLogger(__name__)
 
 _s3 = boto3.client("s3")
@@ -18,7 +20,8 @@ UPLOAD_BUCKET = os.environ.get("UPLOAD_BUCKET", "storytellerdata-uploadsbucket5e
 
 def _photos_manifest_key(email: str) -> str:
     """Get the S3 key for a user's photos manifest."""
-    return f"profile/{email}/photos.json"
+    ns = user_namespace(email)
+    return f"media/{ns}/photos/photos.json"
 
 
 def _get_user_photos(email: str) -> list:

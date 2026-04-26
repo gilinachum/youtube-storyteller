@@ -46,8 +46,9 @@ class TestListStyleTemplates:
 class TestListUserPhotos:
     """Tests for list_user_photos tool."""
 
+    @patch("agent.tools.list_user_photos.user_namespace", return_value="testns123")
     @patch("agent.tools.list_user_photos._s3")
-    def test_returns_photos_for_user(self, mock_s3):
+    def test_returns_photos_for_user(self, mock_s3, mock_ns):
         photos = [
             {"file_id": "abc123", "filename": "headshot.jpg", "description": "Professional headshot, smiling"},
         ]
@@ -60,8 +61,9 @@ class TestListUserPhotos:
         assert result["count"] == 1
         assert result["photos"][0]["file_id"] == "abc123"
 
+    @patch("agent.tools.list_user_photos.user_namespace", return_value="testns123")
     @patch("agent.tools.list_user_photos._s3")
-    def test_returns_empty_for_new_user(self, mock_s3):
+    def test_returns_empty_for_new_user(self, mock_s3, mock_ns):
         mock_s3.exceptions.NoSuchKey = type("NoSuchKey", (Exception,), {})
         mock_s3.get_object.side_effect = mock_s3.exceptions.NoSuchKey()
 
@@ -74,9 +76,10 @@ class TestListUserPhotos:
 class TestGenerateThumbnail:
     """Tests for generate_thumbnail tool."""
 
+    @patch("agent.tools.generate_thumbnail.user_namespace", return_value="abc123def456")
     @patch("agent.tools.generate_thumbnail._get_gemini_client")
     @patch("agent.tools.generate_thumbnail._s3")
-    def test_successful_generation(self, mock_s3, mock_get_client):
+    def test_successful_generation(self, mock_s3, mock_get_client, mock_ns):
         from agent.tools.generate_thumbnail import make_generate_thumbnail_tool
 
         generate_thumbnail = make_generate_thumbnail_tool("test@example.com")
@@ -113,8 +116,9 @@ class TestGenerateThumbnail:
         json_part = raw_result.split("\n\n", 1)[1]
         result = json.loads(json_part)
         assert result["success"] is True
-        assert "url" in result
+        assert "media_path" in result
         assert "s3_key" in result
+        assert result["s3_key"].startswith("media/abc123def456/thumbnails/")
         mock_s3.put_object.assert_called_once()
 
     @patch("agent.tools.generate_thumbnail._get_gemini_client")
