@@ -77,7 +77,9 @@ class TestGenerateThumbnail:
     @patch("agent.tools.generate_thumbnail._get_gemini_client")
     @patch("agent.tools.generate_thumbnail._s3")
     def test_successful_generation(self, mock_s3, mock_get_client):
-        from agent.tools.generate_thumbnail import generate_thumbnail
+        from agent.tools.generate_thumbnail import make_generate_thumbnail_tool
+
+        generate_thumbnail = make_generate_thumbnail_tool("test@example.com")
 
         # Mock Gemini response
         mock_client = MagicMock()
@@ -101,11 +103,15 @@ class TestGenerateThumbnail:
         # Mock S3
         mock_s3.generate_presigned_url.return_value = "https://s3.example.com/thumb.png"
 
-        result = json.loads(generate_thumbnail._tool_func(
+        raw_result = generate_thumbnail._tool_func(
             prompt="Bold text '5 AWS Tips', blue gradient background",
             session_id="test-session",
-        ))
+        )
 
+        # Result starts with markdown image, then JSON
+        assert raw_result.startswith("![thumbnail](")
+        json_part = raw_result.split("\n\n", 1)[1]
+        result = json.loads(json_part)
         assert result["success"] is True
         assert "url" in result
         assert "s3_key" in result
@@ -113,7 +119,9 @@ class TestGenerateThumbnail:
 
     @patch("agent.tools.generate_thumbnail._get_gemini_client")
     def test_handles_no_image_response(self, mock_get_client):
-        from agent.tools.generate_thumbnail import generate_thumbnail
+        from agent.tools.generate_thumbnail import make_generate_thumbnail_tool
+
+        generate_thumbnail = make_generate_thumbnail_tool("test@example.com")
 
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client
@@ -137,7 +145,9 @@ class TestGenerateThumbnail:
 
     @patch("agent.tools.generate_thumbnail._get_gemini_client")
     def test_handles_api_error(self, mock_get_client):
-        from agent.tools.generate_thumbnail import generate_thumbnail
+        from agent.tools.generate_thumbnail import make_generate_thumbnail_tool
+
+        generate_thumbnail = make_generate_thumbnail_tool("test@example.com")
 
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client

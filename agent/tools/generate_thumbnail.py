@@ -22,7 +22,7 @@ _s3 = boto3.client("s3")
 _secrets = boto3.client("secretsmanager")
 
 UPLOAD_BUCKET = os.environ.get("UPLOAD_BUCKET", "storytellerdata-uploadsbucket5e5e9b64-ysokbp7rrbw5")
-GEMINI_MODEL = "gemini-2.5-flash-image"
+GEMINI_MODEL = "gemini-3.1-flash-image-preview"
 
 
 def _get_gemini_client():
@@ -35,9 +35,9 @@ def _get_gemini_client():
     return _gemini_client
 
 
-def _upload_to_s3(image_data: bytes, session_id: str, filename: str) -> str:
+def _upload_to_s3(image_data: bytes, email: str, session_id: str, filename: str) -> str:
     """Upload generated image to S3 and return the S3 key."""
-    key = f"thumbnails/{session_id}/{filename}"
+    key = f"thumbnails/{email}/{session_id}/{filename}"
     _s3.put_object(
         Bucket=UPLOAD_BUCKET,
         Key=key,
@@ -73,104 +73,109 @@ def _load_reference_image(s3_key: str) -> Optional[dict]:
         return None
 
 
-@tool
-def generate_thumbnail(
-    prompt: str,
-    session_id: str = "",
-    reference_image_keys: str = "",
-    style_notes: str = "",
-) -> str:
-    """Generate a YouTube thumbnail image using Gemini.
+def make_generate_thumbnail_tool(email: str):
+    """Create a session-bound generate_thumbnail tool with the user's email."""
 
-    Args:
-        prompt: Detailed English description of the thumbnail to generate.
-                Include: composition, colors, text overlay, style, mood.
-                Always specify "YouTube thumbnail, 1280x720".
-        session_id: The current session ID for organizing generated files.
-        reference_image_keys: Comma-separated S3 keys of reference images
-                             (user photos, style templates, existing thumbnails).
-        style_notes: Additional style guidance (e.g., from a style template).
+    @tool
+    def generate_thumbnail(
+        prompt: str,
+        session_id: str = "",
+        reference_image_keys: str = "",
+        style_notes: str = "",
+    ) -> str:
+        """Generate a YouTube thumbnail image using Gemini.
 
-    Returns:
-        JSON with the generated thumbnail URL and metadata.
-    """
-    from google.genai import types
+        Args:
+            prompt: Detailed English description of the thumbnail to generate.
+                    Include: composition, colors, text overlay, style, mood.
+                    Always specify "YouTube thumbnail, 1280x720".
+            session_id: The current session ID for organizing generated files.
+            reference_image_keys: Comma-separated S3 keys of reference images
+                                 (user photos, style templates, existing thumbnails).
+            style_notes: Additional style guidance (e.g., from a style template).
 
-    client = _get_gemini_client()
+        Returns:
+            JSON with the generated thumbnail URL and metadata.
+        """
+        from google.genai import types
 
-    # Build the full prompt
-    full_prompt = f"Generate a YouTube thumbnail image, exactly 1280x720 pixels, high quality.\n\n{prompt}"
-    if style_notes:
-        full_prompt += f"\n\nStyle guidance: {style_notes}"
+        client = _get_gemini_client()
 
-    # Build content parts
-    contents = []
+        # Build the full prompt
+        full_prompt = f"Generate a YouTube thumbnail image, exactly 1280x720 pixels, high quality.\n\n{prompt}"
+        if style_notes:
+            full_prompt += f"\n\nStyle guidance: {style_notes}"
 
-    # Add reference images if provided
-    if reference_image_keys:
-        keys = [k.strip() for k in reference_image_keys.split(",") if k.strip()]
-        for key in keys:
-            ref = _load_reference_image(key)
-            if ref:
-                from google.genai import types as gtypes
-                contents.append(gtypes.Part(
-                    inline_data=gtypes.Blob(
-                        mime_type=ref["inline_data"]["mime_type"],
-                        data=base64.b64decode(ref["inline_data"]["data"]),
-                    )
-                ))
+        # Build content parts
+        contents = []
 
-    # Add the text prompt
-    contents.append(full_prompt)
+        # Add reference images if provided
+        if reference_image_keys:
+            keys = [k.strip() for k in reference_image_keys.split(",") if k.strip()]
+            for key in keys:
+                ref = _load_reference_image(key)
+                if ref:
+                    from google.genai import types as gtypes
+                    contents.append(gtypes.Part(
+                        inline_data=gtypes.Blob(
+                            mime_type=ref["inline_data"]["mime_type"],
+                            data=base64.b64decode(ref["inline_data"]["data"]),
+                        )
+                    ))
 
-    try:
-        response = client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=contents,
-            config=types.GenerateContentConfig(
-                response_modalities=["TEXT", "IMAGE"],
-            ),
-        )
+        # Add the text prompt
+        contents.append(full_prompt)
 
-        # Extract image and text from response
-        image_data = None
-        text_response = ""
-        for part in response.candidates[0].content.parts:
-            if part.inline_data:
-                data = part.inline_data.data
-                if isinstance(data, str):
-                    image_data = base64.b64decode(data)
-                else:
-                    image_data = data
-            elif part.text:
-                text_response += part.text
+        try:
+            response = client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    response_modalities=["TEXT", "IMAGE"],
+                ),
+            )
 
-        if not image_data:
-            return json.dumps({
-                "success": False,
-                "error": "No image generated by Gemini",
+            # Extract image and text from response
+            image_data = None
+            text_response = ""
+            for part in response.candidates[0].content.parts:
+                if part.inline_data:
+                    data = part.inline_data.data
+                    if isinstance(data, str):
+                        image_data = base64.b64decode(data)
+                    else:
+                        image_data = data
+                elif part.text:
+                    text_response += part.text
+
+            if not image_data:
+                return json.dumps({
+                    "success": False,
+                    "error": "No image generated by Gemini",
+                    "text_response": text_response,
+                }, ensure_ascii=False)
+
+            # Save to S3 under email/session path
+            file_id = str(uuid.uuid4())[:8]
+            filename = f"thumb_{file_id}.png"
+            s3_key = _upload_to_s3(image_data, email, session_id or "default", filename)
+            url = _generate_presigned_url(s3_key)
+
+            return f"![thumbnail]({url})\n\n" + json.dumps({
+                "success": True,
+                "url": url,
+                "s3_key": s3_key,
+                "filename": filename,
+                "size_bytes": len(image_data),
+                "prompt_used": prompt[:500],
                 "text_response": text_response,
             }, ensure_ascii=False)
 
-        # Save to S3
-        file_id = str(uuid.uuid4())[:8]
-        filename = f"thumb_{file_id}.png"
-        s3_key = _upload_to_s3(image_data, session_id or "default", filename)
-        url = _generate_presigned_url(s3_key)
+        except Exception as e:
+            logger.error("Gemini image generation failed: %s", e, exc_info=True)
+            return json.dumps({
+                "success": False,
+                "error": str(e),
+            }, ensure_ascii=False)
 
-        return json.dumps({
-            "success": True,
-            "url": url,
-            "s3_key": s3_key,
-            "filename": filename,
-            "size_bytes": len(image_data),
-            "prompt_used": prompt[:500],
-            "text_response": text_response,
-        }, ensure_ascii=False)
-
-    except Exception as e:
-        logger.error("Gemini image generation failed: %s", e, exc_info=True)
-        return json.dumps({
-            "success": False,
-            "error": str(e),
-        }, ensure_ascii=False)
+    return generate_thumbnail

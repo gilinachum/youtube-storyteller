@@ -34,12 +34,14 @@ UPLOAD_BUCKET="${UPLOAD_BUCKET:?Set UPLOAD_BUCKET env var}"
 BEDROCK_MODEL_ID="${BEDROCK_MODEL_ID:-us.anthropic.claude-sonnet-4-6}"
 
 echo "🚀 Deploying agent to AgentCore Runtime..."
+DEPLOY_TS=$(date -u +%Y%m%d%H%M%S)
 uv run agentcore deploy \
   --env MESSAGES_TABLE="$MESSAGES_TABLE" \
   --env SESSIONS_TABLE="$SESSIONS_TABLE" \
   --env UPLOAD_BUCKET="$UPLOAD_BUCKET" \
   --env BEDROCK_MODEL_ID="$BEDROCK_MODEL_ID" \
   --env BEDROCK_REGION="$REGION" \
+  --env DEPLOY_TS="$DEPLOY_TS" \
   -auc
 
 echo ""
@@ -53,7 +55,7 @@ client.update_agent_runtime(
     roleArn=current["roleArn"],
     networkConfiguration=current["networkConfiguration"],
     agentRuntimeArtifact=current["agentRuntimeArtifact"],
-    environmentVariables=current.get("environmentVariables", {}),
+    environmentVariables={**current.get("environmentVariables", {}), "DEPLOY_TS": "${DEPLOY_TS}"},
     authorizerConfiguration={
         "customJWTAuthorizer": {
             "discoveryUrl": "${COGNITO_DISCOVERY_URL}",

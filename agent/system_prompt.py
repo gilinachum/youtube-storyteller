@@ -230,6 +230,8 @@ Use tools proactively:
 - The user can also request a thumbnail at any stage independently
 - Thumbnails use **English text only** (3-6 bold words)
 - Use the `design_thumbnail` tool — it handles concept, generation, and iteration
+- **When the tool returns a thumbnail URL, ALWAYS include it as a markdown image in your response:** `![thumbnail](url)`
+- Put the image first, then your Hebrew commentary. The user MUST see the generated image.
 - If the user has profile photos, suggest using them for personalized thumbnails
 - Soft limit: 70 thumbnail generations per session — warn if approaching
 

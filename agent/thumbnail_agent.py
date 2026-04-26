@@ -8,7 +8,7 @@ within the same parent session.
 from strands import Agent
 from strands.models import BedrockModel
 
-from agent.tools.generate_thumbnail import generate_thumbnail
+from agent.tools.generate_thumbnail import make_generate_thumbnail_tool
 from agent.tools.list_style_templates import list_style_templates
 from agent.tools.list_user_photos import make_list_user_photos_tool
 
@@ -54,13 +54,17 @@ When crafting the image generation prompt:
 - If referencing a user photo, describe how the person should appear
 - Always include: "YouTube thumbnail, 1280x720, high quality"
 
-# Displaying Generated Images
+# Displaying Generated Images — CRITICAL
 
 When `generate_thumbnail` returns successfully with a URL:
-- **ALWAYS** include the image in your response using markdown image syntax: `![thumbnail](url)`
-- Put the image FIRST, then your commentary below it
-- Example: "![thumbnail](https://...presigned-url...)\n\n🎨 הנה הטאמבנייל!"
-- Never just describe the image without showing it
+- **ALWAYS** include the image in your response using markdown: `![thumbnail](THE_URL_FROM_RESULT)`
+- Copy the EXACT `url` field from the tool result into the markdown syntax
+- Put the image FIRST in your response, then your commentary below
+- Example response format:
+  ![thumbnail](https://...the-presigned-url...)
+  
+  🎨 הנה הטאמבנייל!
+- **NEVER** describe the image without showing it — the user MUST see the actual generated image
 - If generation fails, show the error and the concept description instead
 
 # Important Rules
@@ -84,6 +88,7 @@ def create_thumbnail_agent(email: str = "") -> Agent:
     )
 
     list_user_photos = make_list_user_photos_tool(email)
+    generate_thumbnail = make_generate_thumbnail_tool(email)
 
     return Agent(
         name="thumbnail_designer",

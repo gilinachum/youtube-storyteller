@@ -5,7 +5,7 @@ from .pdf_extract import pdf_extract
 from .pptx_extract import pptx_extract
 from .web_research import web_research
 from .trend_analysis import trend_analysis
-from .generate_thumbnail import generate_thumbnail
+from .generate_thumbnail import make_generate_thumbnail_tool
 from .list_style_templates import list_style_templates
 from .list_user_photos import make_list_user_photos_tool
 
@@ -15,7 +15,7 @@ __all__ = [
     "pptx_extract",
     "web_research",
     "trend_analysis",
-    "generate_thumbnail",
+    "make_generate_thumbnail_tool",
     "list_style_templates",
     "make_list_user_photos_tool",
 ]
