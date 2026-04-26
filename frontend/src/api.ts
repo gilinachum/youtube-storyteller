@@ -43,6 +43,15 @@ export async function listSessions(email: string): Promise<Session[]> {
   return data.sessions || []
 }
 
+// Delete a session
+export async function deleteSession(email: string, sessionId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/sessions/${sessionId}?email=${encodeURIComponent(email)}`, {
+    method: 'DELETE',
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || 'Failed to delete session')
+}
+
 // Get messages + files for a session
 export async function getSessionMessages(sessionId: string, email?: string): Promise<{ messages: Message[]; files: FileRecord[]; shared_with: string[] }> {
   const params = email ? `?email=${encodeURIComponent(email)}` : ''

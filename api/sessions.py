@@ -22,6 +22,13 @@ def handler(event, context):
 
         session_id = path_params.get("id")
 
+        # DELETE /sessions/{id} — delete a session
+        if method == "DELETE" and session_id and not path.endswith("/share") and "/files/" not in path:
+            email = query_params.get("email", "").strip().lower()
+            if not email:
+                return _response(400, {"error": "email query param required"})
+            return delete_session(email, session_id)
+
         # POST /sessions/{id}/share — share a session
         if method == "POST" and session_id and path.endswith("/share"):
             return share_session(event, session_id)
@@ -149,6 +156,32 @@ def share_session(event, session_id: str):
         )
 
     return _response(200, {"message": "Session shared", "shared_with": share_with_email})
+
+
+def delete_session(email: str, session_id: str):
+    """Delete a session and all its messages."""
+    sess_table = dynamodb.Table(SESSIONS_TABLE)
+    msgs_table = dynamodb.Table(MESSAGES_TABLE)
+
+    # Verify session belongs to this user
+    resp = sess_table.get_item(Key={"email": email, "session_id": session_id})
+    if not resp.get("Item"):
+        return _response(404, {"error": "Session not found"})
+
+    # Delete all messages for this session
+    result = msgs_table.query(
+        KeyConditionExpression=Key("session_id").eq(session_id),
+        ProjectionExpression="session_id, #ts",
+        ExpressionAttributeNames={"#ts": "timestamp"},
+    )
+    with msgs_table.batch_writer() as batch:
+        for item in result.get("Items", []):
+            batch.delete_item(Key={"session_id": item["session_id"], "timestamp": item["timestamp"]})
+
+    # Delete the session itself
+    sess_table.delete_item(Key={"email": email, "session_id": session_id})
+
+    return _response(200, {"message": "Session deleted", "session_id": session_id})
 
 
 def download_file(session_id: str, file_id: str, email: str):

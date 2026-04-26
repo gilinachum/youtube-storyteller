@@ -1,3 +1,4 @@
+import { useState, useEffect, useRef, useCallback } from 'react'
 import type { Session } from '../api'
 
 interface Props {
@@ -5,22 +6,61 @@ interface Props {
   currentSessionId: string | null
   onSelect: (sessionId: string) => void
   onNewChat: () => void
+  onDelete: (sessionId: string) => void
   email: string
   onLogout: () => void
   isOpen: boolean
   onClose: () => void
 }
 
-export default function Sidebar({ sessions, currentSessionId, onSelect, onNewChat, email, onLogout, isOpen, onClose }: Props) {
+export default function Sidebar({ sessions, currentSessionId, onSelect, onNewChat, onDelete, email, onLogout, isOpen, onClose }: Props) {
+  // Track sessions pending deletion (sessionId -> timeout id)
+  const [pendingDeletes, setPendingDeletes] = useState<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+  const pendingRef = useRef(pendingDeletes)
+  pendingRef.current = pendingDeletes
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      pendingRef.current.forEach(timer => clearTimeout(timer))
+    }
+  }, [])
+
   const handleSelect = (sessionId: string) => {
+    if (pendingDeletes.has(sessionId)) return // can't select a deleting session
     onSelect(sessionId)
-    onClose() // auto-close on mobile after selecting
+    onClose()
   }
 
   const handleNewChat = () => {
     onNewChat()
     onClose()
   }
+
+  const handleDelete = useCallback((e: React.MouseEvent, sessionId: string) => {
+    e.stopPropagation()
+    // Start 10s timer — call onDelete after
+    const timer = setTimeout(() => {
+      onDelete(sessionId)
+      setPendingDeletes(prev => {
+        const next = new Map(prev)
+        next.delete(sessionId)
+        return next
+      })
+    }, 10000)
+    setPendingDeletes(prev => new Map(prev).set(sessionId, timer))
+  }, [onDelete])
+
+  const handleUndo = useCallback((e: React.MouseEvent, sessionId: string) => {
+    e.stopPropagation()
+    const timer = pendingDeletes.get(sessionId)
+    if (timer) clearTimeout(timer)
+    setPendingDeletes(prev => {
+      const next = new Map(prev)
+      next.delete(sessionId)
+      return next
+    })
+  }, [pendingDeletes])
 
   return (
     <>
@@ -69,29 +109,61 @@ export default function Sidebar({ sessions, currentSessionId, onSelect, onNewCha
             <p className="text-gray-600 text-xs text-center py-8">אין שיחות עדיין</p>
           ) : (
             <div className="space-y-1">
-              {sessions.map(s => (
-                <button
-                  key={s.session_id}
-                  onClick={() => handleSelect(s.session_id)}
-                  className={`w-full text-right px-3 py-2.5 rounded-xl text-sm transition-colors ${
-                    s.session_id === currentSessionId
-                      ? 'bg-gray-700 text-white'
-                      : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
-                  }`}
-                >
-                  <div className="flex items-center gap-1.5">
-                    <div className="font-medium truncate flex-1">{s.name || 'שיחה חדשה'}</div>
-                    {(s._shared || (s.shared_with && s.shared_with.length > 0)) && (
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5 text-brand-400 flex-shrink-0">
-                        <path d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
-                      </svg>
-                    )}
-                  </div>
-                  <div className="text-xs text-gray-500 mt-0.5">
-                    {s._shared ? `משותף ע"י ${s._shared_by}` : new Date(s.updated_at).toLocaleDateString('he-IL', { month: 'short', day: 'numeric' })}
-                  </div>
-                </button>
-              ))}
+              {sessions.map(s => {
+                const isPending = pendingDeletes.has(s.session_id)
+
+                if (isPending) {
+                  // Undo state — same rectangle, different content
+                  return (
+                    <div
+                      key={s.session_id}
+                      className="w-full px-3 py-2.5 rounded-xl text-sm bg-gray-800/50 border border-gray-700/50 flex items-center justify-between"
+                    >
+                      <span className="text-gray-500 text-xs">השיחה נמחקה</span>
+                      <button
+                        onClick={(e) => handleUndo(e, s.session_id)}
+                        className="text-brand-400 hover:text-brand-300 text-xs font-medium transition-colors"
+                      >
+                        ביטול
+                      </button>
+                    </div>
+                  )
+                }
+
+                return (
+                  <button
+                    key={s.session_id}
+                    onClick={() => handleSelect(s.session_id)}
+                    className={`group w-full text-right px-3 py-2.5 rounded-xl text-sm transition-colors relative ${
+                      s.session_id === currentSessionId
+                        ? 'bg-gray-700 text-white'
+                        : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <div className="font-medium truncate flex-1">{s.name || 'שיחה חדשה'}</div>
+                      {(s._shared || (s.shared_with && s.shared_with.length > 0)) && (
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5 text-brand-400 flex-shrink-0">
+                          <path d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+                        </svg>
+                      )}
+                      {/* Delete button — visible on hover */}
+                      <button
+                        onClick={(e) => handleDelete(e, s.session_id)}
+                        className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-gray-600 text-gray-500 hover:text-gray-300 transition-all flex-shrink-0"
+                        title="מחק שיחה"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                    <div className="text-xs text-gray-500 mt-0.5">
+                      {s._shared ? `משותף ע"י ${s._shared_by}` : new Date(s.updated_at).toLocaleDateString('he-IL', { month: 'short', day: 'numeric' })}
+                    </div>
+                  </button>
+                )
+              })}
             </div>
           )}
         </div>

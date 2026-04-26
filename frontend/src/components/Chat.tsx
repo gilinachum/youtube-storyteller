@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { streamChat, listSessions, getSessionMessages, uploadFile, shareSession, getFileDownloadUrl, transcribeAudio } from '../api'
+import { streamChat, listSessions, getSessionMessages, uploadFile, shareSession, getFileDownloadUrl, transcribeAudio, deleteSession } from '../api'
 import type { Session, FileRecord } from '../api'
 import ChatMessages from './ChatMessages'
 import ChatInput from './ChatInput'
@@ -302,6 +302,21 @@ export default function Chat({ email, onLogout }: Props) {
     }
   }, [email, currentSessionId])
 
+  const handleDeleteSession = useCallback(async (sessionId: string) => {
+    try {
+      await deleteSession(email, sessionId)
+      setSessions(prev => prev.filter(s => s.session_id !== sessionId))
+      // If we deleted the current session, start fresh
+      if (sessionId === currentSessionId) {
+        handleNewChat()
+      }
+    } catch (err) {
+      console.error('Delete failed:', err)
+      // Refresh sessions to restore the list
+      listSessions(email).then(setSessions).catch(console.error)
+    }
+  }, [email, currentSessionId, handleNewChat])
+
   const handleShare = useCallback(async (shareWithEmail: string) => {
     try {
       await shareSession(email, currentSessionId, shareWithEmail)
@@ -346,6 +361,7 @@ export default function Chat({ email, onLogout }: Props) {
         currentSessionId={currentSessionId}
         onSelect={handleSelectSession}
         onNewChat={handleNewChat}
+        onDelete={handleDeleteSession}
         email={email}
         onLogout={onLogout}
         isOpen={sidebarOpen}

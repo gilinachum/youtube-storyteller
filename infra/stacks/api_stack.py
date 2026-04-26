@@ -135,6 +135,7 @@ class ApiStack(Stack):
         sessions_resource.add_method("GET", apigw.LambdaIntegration(sessions_fn))
         sessions_id_resource = sessions_resource.add_resource("{id}")
         sessions_id_resource.add_method("GET", apigw.LambdaIntegration(sessions_fn))
+        sessions_id_resource.add_method("DELETE", apigw.LambdaIntegration(sessions_fn))
 
         # POST /sessions/{id}/share
         share_resource = sessions_id_resource.add_resource("share")
