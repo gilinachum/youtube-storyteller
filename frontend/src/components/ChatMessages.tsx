@@ -11,6 +11,11 @@ const FILE_ICON_MAP: Record<string, string> = {
   docx: '📄',
   txt: '📄',
   md: '📄',
+  png: '🖼️',
+  jpg: '🖼️',
+  jpeg: '🖼️',
+  webp: '🖼️',
+  gif: '🖼️',
 }
 
 const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'webp', 'gif'])
@@ -47,13 +52,20 @@ function UserMessage({ content, email }: { content: string; email?: string }) {
   // Helper to get a download URL and open/display the file
   const handleFileClick = async (f: { filename: string; key: string }) => {
     try {
-      const parts = f.key.replace(/^s3:\/\/[^/]+\//, '').split('/')
-      const sessionId = parts.length >= 3 ? parts[2] : ''
-      const fileIdMatch = parts[parts.length - 1]?.match(/^([a-f0-9]+)-/)
-      const fileId = fileIdMatch ? fileIdMatch[1] : ''
-      if (sessionId && fileId) {
-        const url = await getFileDownloadUrl(sessionId, fileId, email || '')
-        window.open(url, '_blank')
+      // Key format: uploads/{email}/{session_id}/{file_id}-{filename}
+      // May be prefixed with s3://bucket/ or s3://
+      const rawKey = f.key.replace(/^s3:\/\/[^/]*\//, '')
+      const parts = rawKey.split('/')
+      // Find 'uploads' in the path and use it as anchor
+      const uploadsIdx = parts.indexOf('uploads')
+      if (uploadsIdx >= 0 && parts.length >= uploadsIdx + 4) {
+        const sessionId = parts[uploadsIdx + 2]
+        const fileIdMatch = parts[uploadsIdx + 3]?.match(/^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})-/)
+        const fileId = fileIdMatch ? fileIdMatch[1] : ''
+        if (sessionId && fileId) {
+          const url = await getFileDownloadUrl(sessionId, fileId, email || '')
+          window.open(url, '_blank')
+        }
       }
     } catch {
       // Fallback: can't download
@@ -110,13 +122,13 @@ function ImagePreview({ file, email, onClick }: { file: { filename: string; key:
     attempted.current = true
     ;(async () => {
       try {
-        // Parse S3 key: uploads/{email}/{session_id}/{file_id}-{filename}
-        const rawKey = file.key.replace(/^s3:\/\/[^/]+\//, '')
+        // Key format: uploads/{email}/{session_id}/{file_id}-{filename}
+        const rawKey = file.key.replace(/^s3:\/\/[^/]*\//, '')
         const parts = rawKey.split('/')
-        // Expected: ['uploads', email, session_id, 'file_id-filename']
-        if (parts.length >= 4 && parts[0] === 'uploads') {
-          const sessionId = parts[2]
-          const fileIdMatch = parts[3]?.match(/^([a-f0-9]+)-/)
+        const uploadsIdx = parts.indexOf('uploads')
+        if (uploadsIdx >= 0 && parts.length >= uploadsIdx + 4) {
+          const sessionId = parts[uploadsIdx + 2]
+          const fileIdMatch = parts[uploadsIdx + 3]?.match(/^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})-/)
           const fileId = fileIdMatch ? fileIdMatch[1] : ''
           if (sessionId && fileId) {
             const downloadUrl = await getFileDownloadUrl(sessionId, fileId, email)
@@ -308,10 +320,10 @@ export default function ChatMessages({ messages, loading, loadingText, progressL
         </div>
       )}
 
-      {/* Progress indicator during streaming — animated bouncing dots */}
+      {/* Progress indicator during streaming — pulsing dots animation */}
       {progressLabel && !loading && (
         <div>
-          <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl px-4 py-2 text-gray-400 text-sm flex items-center gap-2">
+          <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl px-4 py-2 text-gray-400 text-sm flex items-center gap-2 animate-pulse">
             <div className="flex gap-0.5">
               <span className="w-1.5 h-1.5 bg-brand-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
               <span className="w-1.5 h-1.5 bg-brand-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />

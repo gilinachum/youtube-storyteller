@@ -100,16 +100,8 @@ export default function ChatInput({ onSend, disabled, onUpload, onTranscribe }: 
           try {
             const transcribedText = await onTranscribe(blob)
             if (transcribedText.trim()) {
-              // Put transcribed text into the textarea (don't auto-send)
-              setText(prev => prev ? `${prev} ${transcribedText.trim()}` : transcribedText.trim())
-              // Auto-resize textarea
-              setTimeout(() => {
-                if (textareaRef.current) {
-                  textareaRef.current.style.height = 'auto'
-                  textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`
-                  textareaRef.current.focus()
-                }
-              }, 50)
+              // Auto-send the transcribed text immediately
+              onSend(transcribedText.trim())
             }
           } finally {
             setTranscribing(false)
@@ -159,25 +151,27 @@ export default function ChatInput({ onSend, disabled, onUpload, onTranscribe }: 
       )}
 
       <form onSubmit={handleSubmit} className="flex gap-2 items-end">
-        {/* File upload button */}
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={disabled || uploading}
-          className="p-3 rounded-xl hover:bg-gray-800 text-gray-400 hover:text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex-shrink-0"
-          title="העלאת קובץ"
-        >
-          {uploading ? (
-            <svg className="w-5 h-5 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
-          ) : (
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
-            </svg>
-          )}
-        </button>
+        {/* File upload button — hide during recording */}
+        {!recording && !transcribing && (
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={disabled || uploading}
+            className="p-3 rounded-xl hover:bg-gray-800 text-gray-400 hover:text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+            title="העלאת קובץ"
+          >
+            {uploading ? (
+              <svg className="w-5 h-5 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
+              </svg>
+            )}
+          </button>
+        )}
         {/* No accept filter — backend validates allowed types */}
         <input
           ref={fileInputRef}
@@ -186,9 +180,9 @@ export default function ChatInput({ onSend, disabled, onUpload, onTranscribe }: 
           onChange={handleFileSelect}
         />
 
-        {/* Voice record — when recording show cancel + send buttons */}
+        {/* Voice record — when recording show cancel + send, hiding textbox */}
         {recording ? (
-          <div className="flex items-center gap-1 flex-shrink-0">
+          <div className="flex items-center gap-2 flex-1 justify-center">
             <button
               type="button"
               onClick={() => stopRecording(true)}
@@ -199,8 +193,8 @@ export default function ChatInput({ onSend, disabled, onUpload, onTranscribe }: 
                 <path fillRule="evenodd" d="M5.47 5.47a.75.75 0 011.06 0L12 10.94l5.47-5.47a.75.75 0 111.06 1.06L13.06 12l5.47 5.47a.75.75 0 11-1.06 1.06L12 13.06l-5.47 5.47a.75.75 0 01-1.06-1.06L10.94 12 5.47 6.53a.75.75 0 010-1.06z" clipRule="evenodd" />
               </svg>
             </button>
-            <div className="flex items-center gap-2 px-3 text-red-400 text-sm">
-              <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+            <div className="flex items-center gap-2 px-4 text-red-400 text-sm">
+              <div className="w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse" />
               <span>מקליט...</span>
             </div>
             <button
@@ -214,65 +208,55 @@ export default function ChatInput({ onSend, disabled, onUpload, onTranscribe }: 
               </svg>
             </button>
           </div>
+        ) : transcribing ? (
+          /* Transcribing state — replaces textbox with centered spinner */
+          <div className="flex items-center gap-3 flex-1 justify-center py-3">
+            <svg className="w-5 h-5 animate-spin text-brand-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+            <span className="text-brand-400 text-sm">מתמלל ושולח...</span>
+          </div>
         ) : (
-          <button
-            type="button"
-            onClick={startRecording}
-            disabled={disabled || uploading || transcribing}
-            className={`p-3 rounded-xl transition-colors flex-shrink-0 ${
-              transcribing
-                ? 'bg-gray-800 text-brand-400'
-                : 'hover:bg-gray-800 text-gray-400 hover:text-gray-200'
-            } disabled:opacity-50 disabled:cursor-not-allowed`}
-            title={transcribing ? 'מתמלל...' : 'הקלט הודעה קולית'}
-          >
-            {transcribing ? (
-              <svg className="w-5 h-5 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
-            ) : (
+          /* Normal state — mic + textbox + send */
+          <>
+            <button
+              type="button"
+              onClick={startRecording}
+              disabled={disabled || uploading}
+              className="p-3 rounded-xl hover:bg-gray-800 text-gray-400 hover:text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+              title="הקלט הודעה קולית"
+            >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
               </svg>
-            )}
-          </button>
-        )}
+            </button>
 
-        <div className="relative flex-1">
-          <textarea
-            ref={textareaRef}
-            value={text}
-            onChange={e => setText(e.target.value)}
-            onKeyDown={handleKeyDown}
-            onInput={handleInput}
-            placeholder={transcribing ? 'מתמלל...' : 'כתוב לי כאן...'}
-            disabled={disabled || transcribing}
-            rows={1}
-            className="w-full resize-none px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition text-sm leading-relaxed disabled:opacity-50 disabled:cursor-not-allowed"
-          />
-          {transcribing && (
-            <div className="absolute inset-0 flex items-center justify-center bg-gray-800/80 rounded-xl">
-              <div className="flex items-center gap-2 text-brand-400 text-sm">
-                <svg className="w-4 h-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
-                <span>מתמלל הודעה קולית...</span>
-              </div>
+            <div className="relative flex-1">
+              <textarea
+                ref={textareaRef}
+                value={text}
+                onChange={e => setText(e.target.value)}
+                onKeyDown={handleKeyDown}
+                onInput={handleInput}
+                placeholder="כתוב לי כאן..."
+                disabled={disabled}
+                rows={1}
+                className="w-full resize-none px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition text-sm leading-relaxed disabled:opacity-50 disabled:cursor-not-allowed"
+              />
             </div>
-          )}
-        </div>
-        <button
-          type="submit"
-          disabled={disabled || (!text.trim() && attachedFiles.length === 0)}
-          className="p-3 rounded-xl bg-brand-600 hover:bg-brand-500 disabled:bg-gray-700 disabled:cursor-not-allowed transition-colors flex-shrink-0"
-          title="שלח"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 text-white rotate-180">
-            <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
-          </svg>
-        </button>
+            <button
+              type="submit"
+              disabled={disabled || (!text.trim() && attachedFiles.length === 0)}
+              className="p-3 rounded-xl bg-brand-600 hover:bg-brand-500 disabled:bg-gray-700 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+              title="שלח"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 text-white rotate-180">
+                <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
+              </svg>
+            </button>
+          </>
+        )}
       </form>
     </div>
   )
