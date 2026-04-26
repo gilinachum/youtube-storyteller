@@ -35,11 +35,9 @@ export default function ChatInput({ onSend, disabled, onUpload, onTranscribe }: 
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSubmit(e)
-    }
+  const handleKeyDown = (_e: React.KeyboardEvent) => {
+    // Enter alone creates a new line (default textarea behavior)
+    // No keyboard shortcut for send — use the send button
   }
 
   const handleInput = () => {
