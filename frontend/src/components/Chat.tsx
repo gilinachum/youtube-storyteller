@@ -195,38 +195,64 @@ export default function Chat({ email, onLogout }: Props) {
         listSessions(email).then(setSessions).catch(console.error)
         setTimeout(() => listSessions(email).then(setSessions).catch(console.error), 2000)
       },
-      onError: (err) => {
-        // If we have partial streaming content, save it instead of showing error
-        if (streamingContent) {
-          const parsedText = parseStreamData(streamingContent)
-          if (parsedText.trim()) {
-            const partialMsg: Message = {
-              id: crypto.randomUUID(),
-              role: 'assistant',
-              content: parsedText,
-              timestamp: Date.now(),
+      onError: async (err) => {
+        abortControllerRef.current = null
+
+        // Show partial content if we have any
+        const partialText = streamingContent ? parseStreamData(streamingContent).trim() : ''
+        if (partialText) {
+          setMessages(prev => [...prev, {
+            id: crypto.randomUUID(),
+            role: 'assistant' as const,
+            content: partialText,
+            timestamp: Date.now(),
+          }])
+        }
+
+        // Retry fetching the full response from server (it may have been saved)
+        const MAX_RETRIES = 5
+        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+          const delay = Math.min(1000 * Math.pow(2, attempt - 1), 16000) // 1s, 2s, 4s, 8s, 16s
+          setProgressLabel(`⏳ בודק תשובה מהשרת... (${attempt}/${MAX_RETRIES})`)
+          setStreamingContent('') // clear streaming so progress shows via loading
+
+          await new Promise(r => setTimeout(r, delay))
+
+          try {
+            const { messages: serverMsgs } = await getSessionMessages(currentSessionId, email)
+            // Check if server has an assistant message newer than our last user message
+            const currentNonWelcome = messages.filter(m => m.id !== 'welcome')
+            if (serverMsgs.length > currentNonWelcome.length) {
+              const loaded: Message[] = serverMsgs.map((m: any, i: number) => ({
+                id: `recovered-${i}`,
+                role: m.role as 'user' | 'assistant',
+                content: m.content,
+                timestamp: new Date(m.timestamp).getTime(),
+              }))
+              setMessages([{ ...WELCOME_MESSAGE, id: 'welcome', timestamp: 0 }, ...loaded])
+              setLoading(false)
+              setStreamingContent('')
+              setProgressLabel('')
+              listSessions(email).then(setSessions).catch(console.error)
+              return // Success — recovered the response
             }
-            setMessages(prev => [...prev, partialMsg])
-            setLoading(false)
-            setStreamingContent('')
-            setProgressLabel('')
-            abortControllerRef.current = null
-            // Reload full response from server when tab regains focus
-            return
+          } catch {
+            // Server unreachable — continue retrying
           }
         }
 
-        const errMsg: Message = {
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          content: `⚠️ שגיאה: ${err.message}`,
-          timestamp: Date.now(),
+        // All retries exhausted — show error
+        if (!partialText) {
+          setMessages(prev => [...prev, {
+            id: crypto.randomUUID(),
+            role: 'assistant' as const,
+            content: `⚠️ שגיאה: ${err.message}`,
+            timestamp: Date.now(),
+          }])
         }
-        setMessages(prev => [...prev, errMsg])
         setLoading(false)
         setStreamingContent('')
         setProgressLabel('')
-        abortControllerRef.current = null
       },
     })
   }, [email, currentSessionId])
