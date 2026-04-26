@@ -205,6 +205,7 @@ async def invoke(payload, context):
         "name_session": "✏️ שומר שיחה...",
         "export_document": "📝 מכין מסמך...",
         "design_thumbnail": "🎨 מעצב טאמבנייל...",
+        "save_user_photo": "🖼️ שומר תמונת פרופיל...",
     }
 
     async def generate_stream():

@@ -22,6 +22,7 @@ from agent.tools import (
 )
 from agent.tools.session_manager import make_name_session_tool
 from agent.tools.export_document import make_export_document_tool
+from agent.tools.save_user_photo import make_save_user_photo_tool
 from agent.research_agent import create_research_agent
 from agent.thumbnail_agent import create_thumbnail_agent
 
@@ -40,6 +41,7 @@ def create_agent(email: str = "", session_id: str = "") -> Agent:
     # Create session-aware tools
     name_session = make_name_session_tool(email, session_id)
     export_document = make_export_document_tool(email, session_id)
+    save_user_photo = make_save_user_photo_tool(email)
 
     # Create research sub-agent as a tool
     research_agent = create_research_agent()
@@ -76,6 +78,7 @@ def create_agent(email: str = "", session_id: str = "") -> Agent:
             pptx_extract,
             name_session,
             export_document,
+            save_user_photo,
             research_tool,
             thumbnail_tool,
         ],

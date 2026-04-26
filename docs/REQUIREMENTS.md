@@ -137,13 +137,13 @@ _Version 4.0 | 2026-04-25 | Single source of truth for all features_
 
 | ID | Requirement | Status |
 |----|-------------|--------|
-| THUMB-1 | Thumbnail sub-agent (Strands Agent.as_tool with preserve_context=True) | 🔲 Planned |
-| THUMB-2 | Image generation via Gemini Flash Preview (GCP API key in Secrets Manager) | 🔲 Planned |
-| THUMB-3 | Output size: 1280×720 (YouTube standard) | 🔲 Planned |
-| THUMB-4 | English text on thumbnails (system prompt enforces English for image gen) | 🔲 Planned |
-| THUMB-5 | Iterative workflow: concept → approve → generate → iterate | 🔲 Planned |
-| THUMB-6 | User profile photos: upload personal images stored per-user in S3 | 🔲 Planned |
-| THUMB-7 | Auto-describe uploaded photos (one-off sub-agent, especially emotions) | 🔲 Planned |
+| THUMB-1 | Thumbnail sub-agent (Strands Agent.as_tool with preserve_context=True) | ✅ Done |
+| THUMB-2 | Image generation via Gemini 3.1 Flash Image Preview (GCP API key in Secrets Manager) | ✅ Done |
+| THUMB-3 | Output size: 1280×720 (YouTube standard) | ✅ Done |
+| THUMB-4 | English text on thumbnails (system prompt enforces English for image gen) | ✅ Done |
+| THUMB-5 | Iterative workflow: concept → approve → generate → iterate | ✅ Done |
+| THUMB-6 | User profile photos: upload personal images stored per-user in S3 | ✅ Done |
+| THUMB-7 | Describe uploaded photos (agent describes expression, setting in save_user_photo) | ✅ Done |
 | THUMB-8 | Agent suggests which user photo fits current thumbnail | 🔲 Planned |
 | THUMB-9 | Style templates: 3 admin-uploaded templates in S3 folder with descriptions JSON | 🔲 Planned |
 | THUMB-10 | Recommend style from templates or generate custom | 🔲 Planned |
@@ -151,11 +151,13 @@ _Version 4.0 | 2026-04-25 | Single source of truth for all features_
 | THUMB-12 | Use existing thumbnail as style guide (image-to-image reference) | 🔲 Planned |
 | THUMB-13 | Combine reference images (user photo + style guide) in single generation | 🔲 Planned |
 | THUMB-14 | Soft limit: 70 image generations per session | 🔲 Planned |
-| THUMB-15 | Agent suggests thumbnail after video plan is ready | 🔲 Planned |
-| THUMB-16 | User can request thumbnail at any stage independently | 🔲 Planned |
-| THUMB-17 | Welcome message mentions thumbnail generation capability | 🔲 Planned |
-| THUMB-18 | Generated thumbnails displayed inline in chat | 🔲 Planned |
+| THUMB-15 | Agent suggests thumbnail after video plan is ready | ✅ Done |
+| THUMB-16 | User can request thumbnail at any stage independently | ✅ Done |
+| THUMB-17 | Welcome message mentions thumbnail generation capability | ✅ Done |
+| THUMB-18 | Generated thumbnails displayed inline in chat | ✅ Done |
 | THUMB-19 | Download generated thumbnails | 🔲 Planned |
+| THUMB-20 | Image upload intent recognition: profile photo vs content — ask if ambiguous | ✅ Done |
+| THUMB-21 | Gemini 3.1 Flash Image Preview for generation | ✅ Done |
 
 ---
 
@@ -222,16 +224,21 @@ SK: timestamp (String)
 Attributes: role (user|assistant), content
 ```
 
-### User Profile _(Planned — for thumbnails)_
+### User Profile
 ```
-S3: profile/{email}/photos/{file_id}-{filename}
-S3: profile/{email}/photos.json  — [{file_id, filename, description, emotions, uploaded_at}]
+S3: profile/{email}/photos/{file_id}.{ext}
+S3: profile/{email}/photos.json  — [{file_id, filename, s3_key, description, uploaded_at}]
 ```
 
 ### Thumbnail Templates _(Planned)_
 ```
 S3: templates/thumbnails/{template_id}.png
 S3: templates/thumbnails/templates.json — [{id, name, description, style_notes}]
+```
+
+### Generated Thumbnails
+```
+S3: thumbnails/{email}/{session_id}/{filename}.png
 ```
 
 ---
