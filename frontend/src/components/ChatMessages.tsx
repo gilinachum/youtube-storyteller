@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { getFileDownloadUrl } from '../api'
@@ -13,12 +13,19 @@ const FILE_ICON_MAP: Record<string, string> = {
   md: '📄',
 }
 
+const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'webp', 'gif'])
+
+function isImageFile(filename: string): boolean {
+  const ext = filename.split('.').pop()?.toLowerCase() || ''
+  return IMAGE_EXTENSIONS.has(ext)
+}
+
 function getFileIcon(filename: string): string {
   const ext = filename.split('.').pop()?.toLowerCase() || ''
   return FILE_ICON_MAP[ext] || '📁'
 }
 
-/** Parse user message content — render file attachment refs as styled cards */
+/** Parse user message content — render file attachment refs as styled cards, images as previews */
 function UserMessage({ content, email }: { content: string; email?: string }) {
   // Match [קובץ מצורף: filename (s3_key)] or 📎 filename patterns
   const fileRefRegex = /\[קובץ מצורף: (.+?) \((?:s3:\/\/)?(.+?)\)\]/g
@@ -37,30 +44,47 @@ function UserMessage({ content, email }: { content: string; email?: string }) {
     .replace(clipRegex, '')
     .trim()
 
+  // Helper to get a download URL and open/display the file
+  const handleFileClick = async (f: { filename: string; key: string }) => {
+    try {
+      const parts = f.key.replace(/^s3:\/\/[^/]+\//, '').split('/')
+      const sessionId = parts.length >= 3 ? parts[2] : ''
+      const fileIdMatch = parts[parts.length - 1]?.match(/^([a-f0-9-]+?)-/)
+      const fileId = fileIdMatch ? fileIdMatch[1] : ''
+      if (sessionId && fileId) {
+        const url = await getFileDownloadUrl(sessionId, fileId, email || '')
+        window.open(url, '_blank')
+      }
+    } catch {
+      // Fallback: can't download
+    }
+  }
+
+  // Separate images from documents
+  const imageFiles = files.filter(f => isImageFile(f.filename))
+  const docFiles = files.filter(f => !isImageFile(f.filename))
+
   return (
     <div>
       {cleanText && <p>{cleanText}</p>}
-      {files.length > 0 && (
-        <div className={`flex flex-col gap-1.5 ${cleanText ? 'mt-2' : ''}`}>
-          {files.map((f, i) => (
+      {/* Image previews */}
+      {imageFiles.length > 0 && (
+        <div className={`flex flex-wrap gap-2 ${cleanText ? 'mt-2' : ''}`}>
+          {imageFiles.map((f, i) => (
+            <ImagePreview key={i} file={f} email={email || ''} onClick={() => handleFileClick(f)} />
+          ))}
+        </div>
+      )}
+      {/* Document file cards */}
+      {docFiles.length > 0 && (
+        <div className={`flex flex-col gap-1.5 ${cleanText || imageFiles.length > 0 ? 'mt-2' : ''}`}>
+          {docFiles.map((f, i) => (
             <a
               key={i}
               href="#"
               onClick={async (e) => {
                 e.preventDefault()
-                try {
-                  // Extract session_id and file_id from s3 key: uploads/email/session_id/file_id-filename
-                  const parts = f.key.replace(/^s3:\/\/[^/]+\//, '').split('/')
-                  const sessionId = parts.length >= 3 ? parts[2] : ''
-                  const fileIdMatch = parts[parts.length - 1]?.match(/^([a-f0-9-]+?)-/)
-                  const fileId = fileIdMatch ? fileIdMatch[1] : ''
-                  if (sessionId && fileId) {
-                    const url = await getFileDownloadUrl(sessionId, fileId, email || '')
-                    window.open(url, '_blank')
-                  }
-                } catch {
-                  // Fallback: can't download
-                }
+                await handleFileClick(f)
               }}
               className="flex items-center gap-2 bg-white/10 hover:bg-white/15 transition-colors rounded-lg px-3 py-2 text-sm cursor-pointer"
             >
@@ -72,6 +96,62 @@ function UserMessage({ content, email }: { content: string; email?: string }) {
         </div>
       )}
     </div>
+  )
+}
+
+/** Lazy-loading image preview that fetches a presigned URL */
+function ImagePreview({ file, email, onClick }: { file: { filename: string; key: string }; email: string; onClick: () => void }) {
+  const [url, setUrl] = useState<string | null>(null)
+  const [error, setError] = useState(false)
+  const attempted = useRef(false)
+
+  useEffect(() => {
+    if (attempted.current) return
+    attempted.current = true
+    ;(async () => {
+      try {
+        const parts = file.key.replace(/^s3:\/\/[^/]+\//, '').split('/')
+        const sessionId = parts.length >= 3 ? parts[2] : ''
+        const fileIdMatch = parts[parts.length - 1]?.match(/^([a-f0-9-]+?)-/)
+        const fileId = fileIdMatch ? fileIdMatch[1] : ''
+        if (sessionId && fileId) {
+          const downloadUrl = await getFileDownloadUrl(sessionId, fileId, email)
+          setUrl(downloadUrl)
+        } else {
+          setError(true)
+        }
+      } catch {
+        setError(true)
+      }
+    })()
+  }, [file, email])
+
+  if (error) {
+    return (
+      <div
+        onClick={onClick}
+        className="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-2 text-sm cursor-pointer"
+      >
+        <span className="text-base">🖼️</span>
+        <span className="truncate max-w-[200px] text-white/90">{file.filename}</span>
+      </div>
+    )
+  }
+
+  if (!url) {
+    return (
+      <div className="w-32 h-24 rounded-lg bg-gray-700 animate-pulse" />
+    )
+  }
+
+  return (
+    <img
+      src={url}
+      alt={file.filename}
+      onClick={onClick}
+      className="rounded-lg max-w-[200px] max-h-[150px] object-cover border border-white/20 cursor-pointer hover:border-brand-400 transition-colors"
+      loading="lazy"
+    />
   )
 }
 
@@ -223,11 +303,15 @@ export default function ChatMessages({ messages, loading, loadingText, progressL
         </div>
       )}
 
-      {/* Progress indicator during streaming */}
+      {/* Progress indicator during streaming — animated bouncing dots */}
       {progressLabel && !loading && (
         <div>
           <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl px-4 py-2 text-gray-400 text-sm flex items-center gap-2">
-            <div className="w-2 h-2 bg-brand-400 rounded-full animate-pulse" />
+            <div className="flex gap-0.5">
+              <span className="w-1.5 h-1.5 bg-brand-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+              <span className="w-1.5 h-1.5 bg-brand-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+              <span className="w-1.5 h-1.5 bg-brand-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+            </div>
             <span>{progressLabel}</span>
           </div>
         </div>
