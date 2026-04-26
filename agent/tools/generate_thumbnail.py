@@ -14,8 +14,6 @@ from typing import Optional
 import boto3
 from strands import tool
 
-from agent.media_ns import user_namespace
-
 logger = logging.getLogger(__name__)
 
 # Lazily initialized Gemini client
@@ -39,8 +37,7 @@ def _get_gemini_client():
 
 def _upload_to_s3(image_data: bytes, email: str, session_id: str, filename: str) -> str:
     """Upload generated image to S3 and return the S3 key."""
-    ns = user_namespace(email)
-    key = f"media/{ns}/thumbnails/{session_id}/{filename}"
+    key = f"media/thumbnails/{email}/{session_id}/{filename}"
     _s3.put_object(
         Bucket=UPLOAD_BUCKET,
         Key=key,
@@ -151,8 +148,8 @@ def make_generate_thumbnail_tool(email: str):
                 }, ensure_ascii=False)
 
             # Save to S3 under email/session path
-            file_id = str(uuid.uuid4())[:8]
-            filename = f"thumb_{file_id}.png"
+            file_id = str(uuid.uuid4())
+            filename = f"thumb-{file_id}.png"
             s3_key = _upload_to_s3(image_data, email, session_id or "default", filename)
 
             # Return CloudFront media path (no presigned URL needed)

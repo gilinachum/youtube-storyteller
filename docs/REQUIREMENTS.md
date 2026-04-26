@@ -195,7 +195,7 @@ _Version 4.0 | 2026-04-25 | Single source of truth for all features_
 | INF-10 | Secrets Manager: tavily, perplexity, firecrawl, GCP API keys | ✅ Done |
 | INF-11 | CloudFront /media/* behavior → uploads S3 bucket via OAC | ✅ Done |
 | INF-12 | CloudFront Function: media auth (st-auth cookie, JWT format check) | ✅ Done |
-| INF-13 | Opaque user namespace (HMAC-SHA256) for media S3 paths | ✅ Done |
+| INF-13 | Full UUID in media filenames (prevents path guessing) | ✅ Done |
 | INF-14 | st-auth cookie set on login (Secure, SameSite=Lax, path=/media) | ✅ Done |
 | INF-11 | Cognito user pool (shared) | ✅ Done |
 | INF-12 | AgentCore Observability (ADOT auto-instrumentation → CloudWatch GenAI dashboard) | ✅ Done |
@@ -228,16 +228,12 @@ SK: timestamp (String)
 Attributes: role (user|assistant), content
 ```
 
-### User Media (Opaque Namespace)
-
-All user-generated media uses an opaque namespace: `{user_ns}` = HMAC-SHA256(email, salt)[:16].  
-Salt stored in Secrets Manager (`storyteller/media-salt`).  
-Prevents user1 from guessing user2's media paths.
-
+### User Photos
 ```
-S3: media/{user_ns}/photos/{file_id}.{ext}
-S3: media/{user_ns}/photos/photos.json  — [{file_id, filename, s3_key, description, uploaded_at}]
+S3: media/photos/{email}/{uuid}.{ext}
+S3: media/photos/{email}/photos.json  — [{file_id, filename, s3_key, description, uploaded_at}]
 ```
+Full UUID in filename prevents guessing individual files.
 
 ### Thumbnail Templates _(Planned)_
 ```
@@ -247,10 +243,10 @@ S3: templates/thumbnails/templates.json — [{id, name, description, style_notes
 
 ### Generated Thumbnails
 ```
-S3: media/{user_ns}/thumbnails/{session_id}/{filename}.png
-CloudFront: /media/{user_ns}/thumbnails/{session_id}/{filename}.png
+S3: media/thumbnails/{email}/{session_id}/thumb-{uuid}.png
+CloudFront: /media/thumbnails/{email}/{session_id}/thumb-{uuid}.png
 ```
-Served via CloudFront with Cognito JWT cookie auth (`st-auth`). No presigned URLs.
+Full UUID in filename prevents guessing. Served via CloudFront with cookie auth.
 
 ---
 

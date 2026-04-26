@@ -13,8 +13,6 @@ from datetime import datetime, timezone
 import boto3
 from strands import tool
 
-from agent.media_ns import user_namespace
-
 logger = logging.getLogger(__name__)
 
 _s3 = boto3.client("s3")
@@ -25,8 +23,7 @@ VALID_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 
 
 def _photos_manifest_key(email: str) -> str:
-    ns = user_namespace(email)
-    return f"media/{ns}/photos/photos.json"
+    return f"media/photos/{email}/photos.json"
 
 
 def _load_photos_manifest(email: str) -> list:
@@ -93,10 +90,9 @@ def make_save_user_photo_tool(email: str):
             }, ensure_ascii=False)
 
         # Generate profile photo path with opaque namespace
-        file_id = str(uuid.uuid4())[:8]
+        file_id = str(uuid.uuid4())
         ext = filename.rsplit(".", 1)[-1] if "." in filename else "jpg"
-        ns = user_namespace(email)
-        profile_key = f"media/{ns}/photos/{file_id}.{ext}"
+        profile_key = f"media/photos/{email}/{file_id}.{ext}"
 
         # Copy to profile location
         try:
