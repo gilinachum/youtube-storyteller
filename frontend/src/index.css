@@ -29,6 +29,10 @@
 }
 
 /* Markdown inside assistant messages */
+.prose-rtl {
+  direction: rtl;
+  text-align: right;
+}
 .prose-rtl h1, .prose-rtl h2, .prose-rtl h3 {
   @apply font-bold text-white mt-4 mb-2;
 }
@@ -36,8 +40,8 @@
 .prose-rtl h2 { @apply text-lg; }
 .prose-rtl h3 { @apply text-base; }
 .prose-rtl p  { @apply mb-2 leading-relaxed; }
-.prose-rtl ul { @apply list-disc list-inside mb-2 space-y-1; }
-.prose-rtl ol { @apply list-decimal list-inside mb-2 space-y-1; }
+.prose-rtl ul { @apply list-disc mb-2 space-y-1 pr-4; direction: rtl; text-align: right; }
+.prose-rtl ol { @apply list-decimal mb-2 space-y-1 pr-4; direction: rtl; text-align: right; }
 .prose-rtl li { @apply text-gray-200; }
 .prose-rtl strong { @apply font-semibold text-white; }
 .prose-rtl em { @apply italic text-gray-300; }

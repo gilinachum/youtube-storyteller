@@ -13,6 +13,7 @@ dependencies = [
     "requests>=2.33.1",
     "strands-agents[otel]>=1.36.0",
     "tavily-python>=0.7.23",
+    "google-genai>=1.47.0",
     "aws-opentelemetry-distro>=0.10.0",
 ]
 

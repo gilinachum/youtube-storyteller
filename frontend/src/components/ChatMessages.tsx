@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { getFileDownloadUrl } from '../api'
 
 const FILE_ICON_MAP: Record<string, string> = {
@@ -121,6 +122,23 @@ const markdownComponents: Components = {
   td({ children }) {
     return <td className="px-3 py-2 text-right border-b border-gray-800">{children}</td>
   },
+  // Render thumbnail/inline images with proper styling
+  img({ src, alt }) {
+    return (
+      <div className="my-3">
+        <img
+          src={src}
+          alt={alt || 'thumbnail'}
+          className="rounded-lg max-w-full border border-gray-700 shadow-lg"
+          style={{ maxHeight: '400px', objectFit: 'contain' }}
+          loading="lazy"
+        />
+        {alt && alt !== 'thumbnail' && (
+          <p className="text-xs text-gray-400 mt-1">{alt}</p>
+        )}
+      </div>
+    )
+  },
 }
 
 interface Message {
@@ -177,14 +195,13 @@ export default function ChatMessages({ messages, loading, loadingText, progressL
       {messages.map(msg => (
         <div
           key={msg.id}
-          className="flex justify-end"
         >
           <div className={`${msg.role === 'user' ? 'message-bubble message-user' : 'message-assistant px-1 py-2 max-w-[90%]'}`}>
             {msg.role === 'user' ? (
               <UserMessage content={msg.content} email={email} />
             ) : (
               <div className="prose-rtl">
-                <ReactMarkdown components={markdownComponents}>{msg.content}</ReactMarkdown>
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{msg.content}</ReactMarkdown>
               </div>
             )}
           </div>
@@ -192,7 +209,7 @@ export default function ChatMessages({ messages, loading, loadingText, progressL
       ))}
 
       {loading && (
-        <div className="flex justify-end">
+        <div>
           <div className="message-assistant px-1 py-2">
             <div className="flex items-center gap-2 text-gray-400">
               <div className="flex gap-1">
@@ -208,7 +225,7 @@ export default function ChatMessages({ messages, loading, loadingText, progressL
 
       {/* Progress indicator during streaming */}
       {progressLabel && !loading && (
-        <div className="flex justify-end">
+        <div>
           <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl px-4 py-2 text-gray-400 text-sm flex items-center gap-2">
             <div className="w-2 h-2 bg-brand-400 rounded-full animate-pulse" />
             <span>{progressLabel}</span>

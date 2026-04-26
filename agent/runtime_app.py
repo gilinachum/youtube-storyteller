@@ -204,6 +204,7 @@ async def invoke(payload, context):
         "trend_analysis": "📈 בודק טרנדים...",
         "name_session": "✏️ שומר שיחה...",
         "export_document": "📝 מכין מסמך...",
+        "design_thumbnail": "🎨 מעצב טאמבנייל...",
     }
 
     async def generate_stream():

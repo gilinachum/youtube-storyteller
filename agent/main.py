@@ -23,6 +23,7 @@ from agent.tools import (
 from agent.tools.session_manager import make_name_session_tool
 from agent.tools.export_document import make_export_document_tool
 from agent.research_agent import create_research_agent
+from agent.thumbnail_agent import create_thumbnail_agent
 
 
 def create_agent(email: str = "", session_id: str = "") -> Agent:
@@ -53,6 +54,20 @@ def create_agent(email: str = "", session_id: str = "") -> Agent:
         ),
     )
 
+    # Create thumbnail sub-agent as a tool (preserve_context for iterative design)
+    thumbnail_agent = create_thumbnail_agent(email=email)
+    thumbnail_tool = thumbnail_agent.as_tool(
+        name="design_thumbnail",
+        description=(
+            "Design and generate YouTube thumbnail images. Pass a description of "
+            "the video topic and any design preferences. The thumbnail designer "
+            "maintains context across calls — use it for iterative refinement "
+            "(e.g., 'make text bigger', 'change colors', 'try a different style'). "
+            "It can also list available style templates and the user's profile photos."
+        ),
+        preserve_context=True,
+    )
+
     agent = Agent(
         model=model,
         system_prompt=system_prompt,
@@ -62,6 +77,7 @@ def create_agent(email: str = "", session_id: str = "") -> Agent:
             name_session,
             export_document,
             research_tool,
+            thumbnail_tool,
         ],
     )
 
