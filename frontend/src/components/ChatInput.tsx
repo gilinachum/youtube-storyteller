@@ -182,7 +182,7 @@ export default function ChatInput({ onSend, disabled, onUpload, onTranscribe }: 
           ref={fileInputRef}
           type="file"
           className="hidden"
-          accept=".pdf,.pptx,.ppt,.txt,.md,.doc,.docx"
+          accept=".pdf,.pptx,.ppt,.txt,.md,.doc,.docx,.jpg,.jpeg,.png,.webp,.gif"
           onChange={handleFileSelect}
         />
 
