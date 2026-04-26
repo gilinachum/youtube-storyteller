@@ -178,11 +178,11 @@ export default function ChatInput({ onSend, disabled, onUpload, onTranscribe }: 
             </svg>
           )}
         </button>
+        {/* No accept filter — backend validates allowed types */}
         <input
           ref={fileInputRef}
           type="file"
           className="hidden"
-          accept=".pdf,.pptx,.ppt,.txt,.md,.doc,.docx,.jpg,.jpeg,.png,.webp,.gif"
           onChange={handleFileSelect}
         />
 

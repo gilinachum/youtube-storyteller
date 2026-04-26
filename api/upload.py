@@ -12,7 +12,10 @@ SESSIONS_TABLE = os.environ.get("SESSIONS_TABLE", "storyteller-sessions")
 s3 = boto3.client("s3", region_name="us-east-1")
 dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
 
-ALLOWED_EXTENSIONS = {".pdf", ".pptx", ".ppt", ".txt", ".md", ".doc", ".docx"}
+ALLOWED_EXTENSIONS = {
+    ".pdf", ".pptx", ".ppt", ".txt", ".md", ".doc", ".docx",
+    ".jpg", ".jpeg", ".png", ".webp", ".gif",
+}
 MAX_SIZE_MB = 50
 
 
