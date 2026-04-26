@@ -22,7 +22,7 @@ _s3 = boto3.client("s3")
 _secrets = boto3.client("secretsmanager")
 
 UPLOAD_BUCKET = os.environ.get("UPLOAD_BUCKET", "storytellerdata-uploadsbucket5e5e9b64-ysokbp7rrbw5")
-GEMINI_MODEL = "gemini-2.0-flash-preview-image-generation"
+GEMINI_MODEL = "gemini-2.5-flash-image"
 
 
 def _get_gemini_client():

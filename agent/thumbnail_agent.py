@@ -54,6 +54,15 @@ When crafting the image generation prompt:
 - If referencing a user photo, describe how the person should appear
 - Always include: "YouTube thumbnail, 1280x720, high quality"
 
+# Displaying Generated Images
+
+When `generate_thumbnail` returns successfully with a URL:
+- **ALWAYS** include the image in your response using markdown image syntax: `![thumbnail](url)`
+- Put the image FIRST, then your commentary below it
+- Example: "![thumbnail](https://...presigned-url...)\n\n🎨 הנה הטאמבנייל!"
+- Never just describe the image without showing it
+- If generation fails, show the error and the concept description instead
+
 # Important Rules
 
 - **English text only** on thumbnails — NEVER put Hebrew text on generated images
