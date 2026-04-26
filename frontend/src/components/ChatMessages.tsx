@@ -260,10 +260,11 @@ interface Props {
   loadingText?: string
   progressLabel?: string
   streamingContent?: string
+  isStreaming?: boolean
   email?: string
 }
 
-export default function ChatMessages({ messages, loading, loadingText, progressLabel, streamingContent, email }: Props) {
+export default function ChatMessages({ messages, loading, loadingText, progressLabel, streamingContent, isStreaming, email }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const isStickRef = useRef(true)
@@ -314,6 +315,7 @@ export default function ChatMessages({ messages, loading, loadingText, progressL
         </div>
       ))}
 
+      {/* Loading indicator — before any streaming content arrives */}
       {loading && (
         <div>
           <div className="message-assistant px-1 py-2">
@@ -329,16 +331,17 @@ export default function ChatMessages({ messages, loading, loadingText, progressL
         </div>
       )}
 
-      {/* Progress indicator during streaming — pulsing dots animation */}
-      {progressLabel && !loading && (
+      {/* Persistent activity indicator during streaming — always shows animated dots */}
+      {/* Appears below the streaming message so user knows it's still working */}
+      {isStreaming && !loading && (
         <div>
-          <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl px-4 py-2 text-gray-400 text-sm flex items-center gap-2 animate-pulse">
+          <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl px-4 py-2 text-gray-400 text-sm flex items-center gap-2">
             <div className="flex gap-0.5">
               <span className="w-1.5 h-1.5 bg-brand-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
               <span className="w-1.5 h-1.5 bg-brand-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
               <span className="w-1.5 h-1.5 bg-brand-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
             </div>
-            <span>{progressLabel}</span>
+            <span className="animate-pulse">{progressLabel || 'עובד על זה...'}</span>
           </div>
         </div>
       )}

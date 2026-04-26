@@ -437,6 +437,7 @@ export default function Chat({ email, onLogout }: Props) {
           loadingText={progressLabel || 'מתחבר לסוכן...'}
           progressLabel={streamingContent ? progressLabel : ''}
           streamingContent={streamingContent}
+          isStreaming={loading && !!streamingContent}
           email={email}
         />
         <ChatInput onSend={handleSend} disabled={loading} onUpload={handleUpload} onTranscribe={handleTranscribe} />
