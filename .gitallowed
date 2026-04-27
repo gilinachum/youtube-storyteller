@@ -1,0 +1,16 @@
+# Allowlisted patterns for git-secrets
+# These are AWS Secrets Manager SDK calls, not hardcoded credentials
+
+# Boto3 Secrets Manager client creation
+boto3.client.*secretsmanager
+# Secrets Manager API calls
+get_secret_value.*SecretId
+# SecretString response field
+SecretString
+# IAM policy references to Secrets Manager
+secretsmanager:GetSecretValue
+arn:aws:secretsmanager
+# Cognito client config (no secret = public client)
+generate_secret=False
+# git-secrets self-references in scripts
+git.secrets
