@@ -10,6 +10,7 @@ dist/
 frontend/dist/
 *.zip
 cdk.out/
+infra/cdk.out/
 
 # Environment & secrets
 .env
@@ -34,10 +35,16 @@ Thumbs.db
 *.egg-info/
 .eggs/
 .pytest_cache/
+.ruff_cache/
 .mypy_cache/
-
-# CDK
-infra/cdk.out/
 
 # Logs
 *.log
+
+# Lambda layer build artifacts (rebuilt by deploy scripts)
+infra/layers/*/python/
+infra/layers/*/nodejs/
+
+# Private overlay (if cloned in as private/ or .amazon-internal/)
+.amazon-internal/
+private/

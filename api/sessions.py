@@ -4,6 +4,11 @@ import os
 import boto3
 from boto3.dynamodb.conditions import Key
 
+try:
+    from _auth_context import caller_email
+except ImportError:
+    from api._auth_context import caller_email
+
 
 SESSIONS_TABLE = os.environ.get("SESSIONS_TABLE", "storyteller-sessions")
 MESSAGES_TABLE = os.environ.get("MESSAGES_TABLE", "storyteller-messages")
@@ -18,33 +23,30 @@ def handler(event, context):
         path = event.get("path", "")
         method = event.get("httpMethod", "GET")
         path_params = event.get("pathParameters") or {}
-        query_params = event.get("queryStringParameters") or {}
+
+        email = caller_email(event)
+        if not email:
+            return _response(401, {"error": "unauthenticated"})
 
         session_id = path_params.get("id")
 
         # DELETE /sessions/{id} — delete a session
         if method == "DELETE" and session_id and not path.endswith("/share") and "/files/" not in path:
-            email = query_params.get("email", "").strip().lower()
-            if not email:
-                return _response(400, {"error": "email query param required"})
             return delete_session(email, session_id)
 
         # POST /sessions/{id}/share — share a session
         if method == "POST" and session_id and path.endswith("/share"):
-            return share_session(event, session_id)
+            return share_session(event, email, session_id)
 
         # GET /sessions/{id}/files/{file_id} — download a file
         if method == "GET" and "files" in path:
             file_id = path.split("/files/")[-1] if "/files/" in path else None
             if file_id and session_id:
-                return download_file(session_id, file_id, query_params.get("email", ""))
+                return download_file(session_id, file_id, email)
 
         if session_id:
-            return get_session(session_id, query_params.get("email", ""))
+            return get_session(session_id, email)
         else:
-            email = query_params.get("email", "").strip().lower()
-            if not email:
-                return _response(400, {"error": "email query param required"})
             return list_sessions(email)
 
     except Exception as e:
@@ -116,14 +118,13 @@ def get_session(session_id: str, email: str = ""):
     })
 
 
-def share_session(event, session_id: str):
+def share_session(event, owner_email: str, session_id: str):
     """Share a session with another user by email."""
     body = json.loads(event.get("body") or "{}")
-    owner_email = body.get("email", "").strip().lower()
     share_with_email = body.get("share_with", "").strip().lower()
 
-    if not owner_email or not share_with_email:
-        return _response(400, {"error": "email and share_with are required"})
+    if not share_with_email:
+        return _response(400, {"error": "share_with is required"})
 
     if owner_email == share_with_email:
         return _response(400, {"error": "Cannot share with yourself"})

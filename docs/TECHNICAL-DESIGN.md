@@ -161,7 +161,7 @@ StoryTeller uses **AgentCore's built-in observability** via AWS Distro for OpenT
 - Custom span metrics and error breakdowns
 
 **Log groups:**
-- Runtime logs: `/aws/bedrock-agentcore/runtimes/storyteller-AgcWgN5Lbx-DEFAULT`
+- Runtime logs: `/aws/bedrock-agentcore/runtimes/<runtime-id>-DEFAULT`
 - Traces: `aws/spans` (CloudWatch Transaction Search)
 
 ---

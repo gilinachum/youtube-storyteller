@@ -42,6 +42,22 @@ echo "✅ Committed"
 
 # ── 4. Push ──────────────────────────────────────────────────────────
 echo "🚀 Pushing to origin..."
-PAT=$(aws secretsmanager get-secret-value --secret-id github/storyteller-pat --query SecretString --output text)
-git push "https://gilinachum:${PAT}@github.com/gilinachum/youtube-storyteller.git" main
+# Fetch PAT from Secrets Manager. Secret name + GitHub repo URL are
+# overridable via env vars so forks can use their own:
+#   GH_PAT_SECRET=<secrets-manager-secret-id>     (default: github/storyteller-pat)
+#   GH_REPO_URL=<full https URL with placeholder> (default: this repo's)
+#   GH_USER=<github username>                     (default: extract from remote)
+SECRET_ID="${GH_PAT_SECRET:-github/storyteller-pat}"
+REPO_URL="${GH_REPO_URL:-$(git remote get-url origin)}"
+GH_USER="${GH_USER:-$(git remote get-url origin | sed -E 's|.*github.com[:/]([^/]+)/.*|\1|')}"
+
+PAT=$(aws secretsmanager get-secret-value --secret-id "$SECRET_ID" --query SecretString --output text)
+# If the secret is JSON, try to extract the token field; otherwise treat the whole value as the token
+if echo "$PAT" | python3 -c 'import json,sys; json.loads(sys.stdin.read())' 2>/dev/null; then
+    PAT=$(echo "$PAT" | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print(d.get('token', d.get('pat', '')))")
+fi
+
+# Remove any existing scheme/credentials from REPO_URL
+REPO_PATH=$(echo "$REPO_URL" | sed -E 's|^https?://([^@]+@)?||; s|\.git$||')
+git push "https://${GH_USER}:${PAT}@${REPO_PATH}.git" main
 echo "✅ Pushed to main"

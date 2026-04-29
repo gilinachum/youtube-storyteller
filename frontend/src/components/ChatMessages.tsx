@@ -69,7 +69,7 @@ function UserMessage({ content, email }: { content: string; email?: string }) {
         const fileIdMatch = parts[uploadsIdx + 3]?.match(/^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})-/)
         const fileId = fileIdMatch ? fileIdMatch[1] : ''
         if (sessionId && fileId) {
-          const url = await getFileDownloadUrl(sessionId, fileId, email || '')
+          const url = await getFileDownloadUrl(sessionId, fileId)
           window.open(url, '_blank')
           return
         }
@@ -140,7 +140,7 @@ function ImagePreview({ file, email, onClick }: { file: { filename: string; key:
           const fileIdMatch = parts[uploadsIdx + 3]?.match(/^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})-/)
           const fileId = fileIdMatch ? fileIdMatch[1] : ''
           if (sessionId && fileId) {
-            const downloadUrl = await getFileDownloadUrl(sessionId, fileId, email)
+            const downloadUrl = await getFileDownloadUrl(sessionId, fileId)
             setUrl(downloadUrl)
             return
           }

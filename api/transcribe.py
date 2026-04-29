@@ -11,6 +11,11 @@ import base64
 import boto3
 import urllib.request
 
+try:
+    from _auth_context import caller_email
+except ImportError:
+    from api._auth_context import caller_email
+
 UPLOAD_BUCKET = os.environ.get("UPLOAD_BUCKET", "")
 REGION = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
 
@@ -22,24 +27,27 @@ def handler(event, context):
     method = event.get("httpMethod", "")
     path_params = event.get("pathParameters") or {}
 
+    email = caller_email(event)
+    if not email:
+        return _response(401, {"error": "unauthenticated"})
+
     if method == "POST":
-        return _start_transcription(event)
+        return _start_transcription(event, email)
     elif method == "GET" and path_params.get("job_name"):
         return _poll_transcription(path_params["job_name"])
     else:
         return _response(400, {"error": "Invalid request"})
 
 
-def _start_transcription(event):
+def _start_transcription(event, email: str):
     """Upload audio to S3 and start Transcribe job. Returns immediately."""
     try:
         body = json.loads(event.get("body") or "{}")
-        email = body.get("email", "").strip().lower()
         session_id = body.get("session_id", "").strip()
         audio_data = body.get("audio", "")  # base64-encoded audio
 
-        if not email or not session_id or not audio_data:
-            return _response(400, {"error": "email, session_id, and audio are required"})
+        if not session_id or not audio_data:
+            return _response(400, {"error": "session_id and audio are required"})
 
         # Decode base64 audio
         audio_bytes = base64.b64decode(audio_data)

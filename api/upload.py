@@ -5,6 +5,11 @@ import uuid
 from datetime import datetime, timezone
 import boto3
 
+try:
+    from _auth_context import caller_email
+except ImportError:
+    from api._auth_context import caller_email
+
 
 UPLOAD_BUCKET = os.environ.get("UPLOAD_BUCKET", "")
 SESSIONS_TABLE = os.environ.get("SESSIONS_TABLE", "storyteller-sessions")
@@ -22,22 +27,24 @@ MAX_SIZE_MB = 50
 def handler(event, context):
     try:
         method = event.get("httpMethod", "POST")
-        path_params = event.get("pathParameters") or {}
+
+        email = caller_email(event)
+        if not email:
+            return _response(401, {"error": "unauthenticated"})
 
         if method == "DELETE":
-            return delete_file(event)
+            return delete_file(event, email)
         elif method == "GET":
-            return list_files(event)
+            return list_files(event, email)
 
         # POST — upload
         body = json.loads(event.get("body") or "{}")
-        email = body.get("email", "").strip().lower()
         session_id = body.get("session_id", "").strip()
         filename = body.get("filename", "upload").strip()
         content_type = body.get("content_type", "application/octet-stream")
 
-        if not email or not session_id:
-            return _response(400, {"error": "email and session_id are required"})
+        if not session_id:
+            return _response(400, {"error": "session_id is required"})
 
         # Validate extension
         ext = os.path.splitext(filename)[1].lower()
@@ -75,13 +82,12 @@ def handler(event, context):
         return _response(500, {"error": str(e)})
 
 
-def list_files(event):
+def list_files(event, email: str):
     """GET /upload?session_id=xxx — list files for a session."""
     query_params = event.get("queryStringParameters") or {}
     session_id = query_params.get("session_id", "")
-    email = query_params.get("email", "")
-    if not session_id or not email:
-        return _response(400, {"error": "email and session_id query params required"})
+    if not session_id:
+        return _response(400, {"error": "session_id query param required"})
 
     table = dynamodb.Table(SESSIONS_TABLE)
     result = table.get_item(Key={"email": email, "session_id": session_id})
@@ -90,16 +96,15 @@ def list_files(event):
     return _response(200, {"files": files})
 
 
-def delete_file(event):
+def delete_file(event, email: str):
     """DELETE /upload — remove a file from S3 and DynamoDB."""
     body = json.loads(event.get("body") or "{}")
-    email = body.get("email", "").strip().lower()
     session_id = body.get("session_id", "").strip()
     file_id = body.get("file_id", "").strip()
     s3_key = body.get("key", "").strip()
 
-    if not email or not session_id or not file_id:
-        return _response(400, {"error": "email, session_id, and file_id are required"})
+    if not session_id or not file_id:
+        return _response(400, {"error": "session_id and file_id are required"})
 
     # Delete from S3
     if s3_key:

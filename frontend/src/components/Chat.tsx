@@ -67,12 +67,12 @@ export default function Chat({ email, onLogout }: Props) {
 
   // Load sessions on mount + restore last session
   useEffect(() => {
-    listSessions(email).then(sessions => {
+    listSessions().then(sessions => {
       setSessions(sessions)
       // If we have a saved session ID, load its messages
       const savedId = localStorage.getItem(`storyteller-last-session-${email}`)
       if (savedId && sessions.some(s => s.session_id === savedId)) {
-        getSessionMessages(savedId, email)
+        getSessionMessages(savedId)
           .then(data => {
             if (data.messages && data.messages.length > 0) {
               const loaded: Message[] = data.messages.map((m: any, i: number) => ({
@@ -97,7 +97,7 @@ export default function Chat({ email, onLogout }: Props) {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible' && !loading) {
         // Reload current session messages to get the full response
-        getSessionMessages(currentSessionId, email)
+        getSessionMessages(currentSessionId)
           .then(data => {
             if (data.messages && data.messages.length > 0) {
               const loaded: Message[] = data.messages.map((m: any, i: number) => ({
@@ -115,7 +115,7 @@ export default function Chat({ email, onLogout }: Props) {
           })
           .catch(() => { /* silent — best effort */ })
         // Also refresh session list
-        listSessions(email).then(setSessions).catch(console.error)
+        listSessions().then(setSessions).catch(console.error)
       }
     }
 
@@ -192,8 +192,8 @@ export default function Chat({ email, onLogout }: Props) {
         setProgressLabel('')
         abortControllerRef.current = null
         // Refresh sessions (immediate + delayed to catch name_session updates)
-        listSessions(email).then(setSessions).catch(console.error)
-        setTimeout(() => listSessions(email).then(setSessions).catch(console.error), 2000)
+        listSessions().then(setSessions).catch(console.error)
+        setTimeout(() => listSessions().then(setSessions).catch(console.error), 2000)
       },
       onError: async (err) => {
         abortControllerRef.current = null
@@ -219,7 +219,7 @@ export default function Chat({ email, onLogout }: Props) {
           await new Promise(r => setTimeout(r, delay))
 
           try {
-            const { messages: serverMsgs } = await getSessionMessages(currentSessionId, email)
+            const { messages: serverMsgs } = await getSessionMessages(currentSessionId)
             // Check if server has an assistant message newer than our last user message
             const currentNonWelcome = messages.filter(m => m.id !== 'welcome')
             if (serverMsgs.length > currentNonWelcome.length) {
@@ -233,7 +233,7 @@ export default function Chat({ email, onLogout }: Props) {
               setLoading(false)
               setStreamingContent('')
               setProgressLabel('')
-              listSessions(email).then(setSessions).catch(console.error)
+              listSessions().then(setSessions).catch(console.error)
               return // Success — recovered the response
             }
           } catch {
@@ -281,7 +281,7 @@ export default function Chat({ email, onLogout }: Props) {
     setCurrentSessionId(sessionId)
     setShowFiles(false)
     try {
-      const { messages: msgs, files, shared_with } = await getSessionMessages(sessionId, email)
+      const { messages: msgs, files, shared_with } = await getSessionMessages(sessionId)
       setMessages(msgs.map(m => ({
         id: `${m.timestamp}-${m.role}`,
         role: m.role,
@@ -299,7 +299,7 @@ export default function Chat({ email, onLogout }: Props) {
 
   const handleUpload = useCallback(async (file: File): Promise<UploadedFile | null> => {
     try {
-      const result = await uploadFile(email, currentSessionId, file)
+      const result = await uploadFile(currentSessionId, file)
       setSessionFiles(prev => [...prev, {
         file_id: result.file_id,
         filename: result.filename,
@@ -316,7 +316,7 @@ export default function Chat({ email, onLogout }: Props) {
 
   const handleTranscribe = useCallback(async (audioBlob: Blob): Promise<string> => {
     try {
-      const result = await transcribeAudio(audioBlob, email, currentSessionId)
+      const result = await transcribeAudio(audioBlob, currentSessionId)
       return result.text || ''
     } catch (err: any) {
       console.error('Transcription failed:', err)
@@ -330,7 +330,7 @@ export default function Chat({ email, onLogout }: Props) {
 
   const handleDeleteSession = useCallback(async (sessionId: string) => {
     try {
-      await deleteSession(email, sessionId)
+      await deleteSession(sessionId)
       setSessions(prev => prev.filter(s => s.session_id !== sessionId))
       // If we deleted the current session, start fresh
       if (sessionId === currentSessionId) {
@@ -339,13 +339,13 @@ export default function Chat({ email, onLogout }: Props) {
     } catch (err) {
       console.error('Delete failed:', err)
       // Refresh sessions to restore the list
-      listSessions(email).then(setSessions).catch(console.error)
+      listSessions().then(setSessions).catch(console.error)
     }
   }, [email, currentSessionId, handleNewChat])
 
   const handleShare = useCallback(async (shareWithEmail: string) => {
     try {
-      await shareSession(email, currentSessionId, shareWithEmail)
+      await shareSession(currentSessionId, shareWithEmail)
       setSharedWith(prev => [...prev, shareWithEmail])
       setShowShareModal(false)
     } catch (err) {
@@ -356,7 +356,7 @@ export default function Chat({ email, onLogout }: Props) {
 
   const handleFileDownload = useCallback(async (fileId: string) => {
     try {
-      const url = await getFileDownloadUrl(currentSessionId, fileId, email)
+      const url = await getFileDownloadUrl(currentSessionId, fileId)
       window.open(url, '_blank')
     } catch (err) {
       console.error('Download failed:', err)
