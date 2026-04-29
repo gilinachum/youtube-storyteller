@@ -49,6 +49,9 @@ infra/layers/*/nodejs/
 .amazon-internal/
 private/
 
+# Amazon-internal setup script + state (secrets, ARNs, account IDs)
+infra-private/
+
 # Auth-related static files if dropped in by an overlay
 frontend/public/error/403.html
 frontend/public/js/cfs-handler.js
