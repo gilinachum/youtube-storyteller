@@ -48,3 +48,7 @@ infra/layers/*/nodejs/
 # Private overlay (if cloned in as private/ or .amazon-internal/)
 .amazon-internal/
 private/
+
+# Auth-related static files if dropped in by an overlay
+frontend/public/error/403.html
+frontend/public/js/cfs-handler.js

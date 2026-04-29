@@ -1,13 +1,17 @@
-"""Frontend stack — S3 + CloudFront for the React SPA + optional API origin.
+"""Frontend stack — S3 + CloudFront for the React SPA + API origin + media.
 
-The CloudFront distribution serves the SPA and proxies /api/* to API Gateway.
-There's no edge auth by default — gate access by adding an auth provider
-(Cognito, CloudFront signed cookies, Lambda@Edge, or similar).
+CFS (Midway) protection is applied to the default behavior, /api/*, and
+/media/* by a separate script (infra-private/setup_midway.py) — it adds
+TrustedKeyGroups to these behaviors after the stack is deployed.
+
+The /error/* and /js/cfs-handler.js behaviors stay unrestricted (that's
+what serves the CFS auth page itself).
 """
 import os
 import aws_cdk as cdk
 from aws_cdk import (
     Stack,
+    Duration,
     aws_s3 as s3,
     aws_s3_deployment as s3deploy,
     aws_cloudfront as cf,
@@ -39,8 +43,8 @@ class FrontendStack(Stack):
         oac = cf.S3OriginAccessControl(self, "OAC", description="StoryTeller frontend OAC")
 
         # ── SPA path rewrite function (viewer-request) ───────────────────────
-        # Serves /index.html for any URI without a file extension, so client-side
-        # routes (e.g. /auth/callback, /chat/xyz) still hit the SPA.
+        # For any URI without a file extension (e.g. /auth/callback, /chat/xyz),
+        # serve /index.html so React Router can handle it client-side.
         spa_rewrite = cf.Function(
             self, "SpaRewrite",
             function_name="storyteller-spa-rewrite",
@@ -57,10 +61,10 @@ function handler(event) {
             runtime=cf.FunctionRuntime.JS_2_0,
         )
 
-        # ── API prefix strip (viewer-request for /api/*) ────────────────────
-        # CloudFront sends /api/foo → origin as /api/foo. API Gateway only knows
-        # /foo. This strips /api so the origin sees /foo (stage path added by
-        # RestApiOrigin automatically).
+        # ── API prefix strip function (viewer-request for /api/*) ───────────
+        # CloudFront sends /api/foo → origin as /api/foo. API Gateway only
+        # knows /foo. This function strips /api so the origin sees /foo.
+        # (The API stage segment is added automatically by RestApiOrigin.)
         api_rewrite = cf.Function(
             self, "ApiRewrite",
             function_name="storyteller-api-rewrite",
@@ -68,7 +72,7 @@ function handler(event) {
 function handler(event) {
   var request = event.request;
   if (request.uri.indexOf('/api/') === 0) {
-    request.uri = request.uri.substring(4);
+    request.uri = request.uri.substring(4);  // '/api/foo' -> '/foo'
   } else if (request.uri === '/api') {
     request.uri = '/';
   }
@@ -82,13 +86,15 @@ function handler(event) {
         uploads_bucket_ref = s3.Bucket.from_bucket_arn(
             self, "UploadsBucket", uploads_bucket_arn,
         ) if uploads_bucket_arn else None
+
         media_oac = cf.S3OriginAccessControl(
             self, "MediaOAC", description="StoryTeller media OAC",
         ) if uploads_bucket_ref else None
 
         additional_behaviors = {}
 
-        # /media/* — served directly from uploads bucket (no auth in public repo)
+        # /media/* — served from uploads bucket. CFS protects it via TrustedKeyGroups
+        # (added out-of-band by setup_midway.py). No Lambda/Cognito auth anymore.
         if uploads_bucket_ref and media_oac:
             additional_behaviors["/media/*"] = cf.BehaviorOptions(
                 origin=origins.S3BucketOrigin.with_origin_access_control(
@@ -99,10 +105,13 @@ function handler(event) {
                 cache_policy=cf.CachePolicy.CACHING_OPTIMIZED,
             )
 
-        # /api/* — same-origin API via CloudFront (removes CORS)
+        # /api/* — proxies to API Gateway. CFS cookies gate it at the edge;
+        # API Gateway's Federate authorizer validates the Authorization header.
+        # api_rewrite strips the '/api' prefix so API GW sees the real path.
         if api is not None:
+            api_origin = origins.RestApiOrigin(api)
             additional_behaviors["/api/*"] = cf.BehaviorOptions(
-                origin=origins.RestApiOrigin(api),
+                origin=api_origin,
                 viewer_protocol_policy=cf.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
                 cache_policy=cf.CachePolicy.CACHING_DISABLED,
                 origin_request_policy=cf.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,

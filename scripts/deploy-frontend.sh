@@ -27,7 +27,9 @@ npm run build
 
 echo ""
 echo "☁️  Uploading to S3..."
-aws s3 sync dist/ "s3://$S3_BUCKET/" --delete
+# Additive sync (no --delete) — leaves files outside dist/ intact, e.g.
+# auth-related files dropped in by a private overlay.
+aws s3 sync dist/ "s3://$S3_BUCKET/"
 
 echo ""
 echo "🔄 Invalidating CloudFront cache..."
