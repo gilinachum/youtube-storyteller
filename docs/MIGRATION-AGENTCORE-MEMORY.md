@@ -231,19 +231,20 @@ def get_session_messages(session_id: str, email: str) -> list:
         )
     
     # Convert SessionMessage → frontend format
-    # session_messages already contain full content blocks
+    # Frontend gets display text + eventId only. No raw tool_use/tool_result.
+    # Tool status updates ("reading a doc") are extracted as progress labels.
     return [
         {
             "role": sm.message["role"],
-            "content": extract_display_text(sm.message),  # text for UI
-            "content_blocks": sm.message.get("content", []),  # full blocks for edit/regenerate
+            "content": extract_display_text(sm.message),  # text for chat bubbles
+            "event_id": sm.message_id,  # needed for edit/restore (fork point)
             "timestamp": sm.created_at,
         }
         for sm in session_messages
     ]
 ```
 
-**Key:** We return both `content` (display text for the chat bubbles) and `content_blocks` (full Converse API content including tool_use/tool_result) — the latter is needed for the edit/restore feature.
+**Key:** Frontend only sees display text + `event_id` (for the edit/fork-point feature). Full Converse API messages (tool_use/tool_result) stay server-side — the session manager handles them internally when loading history for the agent.
 
 ### Phase 4: Update CDK Infrastructure (~30 min)
 
@@ -429,50 +430,100 @@ AgentCore Memory has **first-class branching** — exactly the primitive we need
 - Events on `main` branch up to the `rootEventId` are the "parent" history
 - New events on the child branch are the "edited" continuation
 
-### Flow
+### Concrete Example: Editing Your Last Message
 
 ```
-Original timeline (branch: main):
-  E1[user] → E2[assistant+tools] → E3[user] → E4[assistant+tools]
-                                     ↑
-                              User wants to edit E3
-
-After edit (branch: edit-1, rootEventId=E2):
-  E1[user] → E2[assistant+tools] → E5[user: edited text] → E6[assistant: new response]
-  ├── main branch (E1→E4, preserved)         
-  └── edit-1 branch (E5→E6, new)        
+main branch (current state):
+  E1 [user: "video about Docker"]
+  E2 [assistant: researches, uses tools, responds with plan]
+  E3 [user: "make it shorter"]        ← you want to change this
+  E4 [assistant: shorter version]
 ```
+
+You want to replace E3 ("make it shorter") with "focus on networking".
+
+**Step 1:** Branch from **E2** — the last event *before* the one being edited:
+
+```python
+CreateEvent(
+    branch={"name": "edit-a3f8", "rootEventId": "E2"},
+    payload="focus on networking"   # the new user message
+)
+# → creates E5 on branch edit-a3f8
+```
+
+**Step 2:** Agent loads history with `includeParentBranches=True`:
+
+```python
+ListEvents(branch="edit-a3f8", includeParentBranches=True)
+# → E1, E2 (from main) + E5 (from edit-a3f8)
+# Agent sees: E1 → E2 → E5. Never sees E3 or E4.
+```
+
+Agent responds naturally to "focus on networking" with the full prior context → creates E6.
+
+**Result — two timelines coexist, nothing deleted:**
+
+```
+main:       E1 → E2 → E3 → E4          (preserved, never deleted)
+edit-a3f8:  E1 → E2 → E5 → E6          (active branch)
+                 ↑
+            fork point
+```
+
+Session metadata in DDB tracks `current_branch: "edit-a3f8"` so the next request continues on the right branch. Switching back to `main` = "undo the edit".
 
 ### API Implementation
 
 ```python
 # POST /sessions/{id}/edit
 def edit_message(session_id: str, email: str, body: dict):
-    restore_event_id = body["restore_to_event_id"]  # E2 in the diagram
-    new_message = body["message"]
+    fork_event_id = body["fork_event_id"]  # E2 — last event BEFORE the one being edited
+    new_message = body["message"]          # the replacement user message
     branch_name = f"edit-{uuid4().hex[:8]}"
     
-    # 1. Create session manager on the NEW branch
+    # 1. Create session manager targeting the NEW branch
     config = AgentCoreMemoryConfig(
         memory_id=memory_id,
         session_id=session_id,
         actor_id=email_to_actor_id(email),
     )
-    # The session manager needs to be told about the branch
-    # This is where we may need custom code beyond the default session manager
+    # Session manager needs branch awareness (subclass or config extension)
+    # - Writes go to branch_name with rootEventId=fork_event_id
+    # - Reads use BranchFilter(name=branch_name, includeParentBranches=True)
     
-    # 2. Create the agent — history auto-loads from branch
-    #    ListEvents(branch=edit-1, includeParentBranches=True)
-    #    → returns E1, E2 (from main) — the "restored" context
+    # 2. Create agent — history auto-loads from branch
+    #    Sees: E1 → E2 (parent events up to fork point)
     agent = create_agent(email=email, session_id=session_id)
     
     # 3. Run with the new message — response goes on the new branch
     response = agent(new_message)
     
-    # 4. Store current branch name in session metadata (DDB)
-    #    So next request loads the right branch
+    # 4. Store current branch name in session metadata (DDB sessions table)
     update_session_branch(email, session_id, branch_name)
+    
+    # 5. Subsequent requests for this session use the same branch
+    #    (regular /chat reads current_branch from DDB, passes to session manager)
 ```
+
+### Continuing After an Edit
+
+After the edit, the user keeps chatting. All new messages go on the same branch:
+
+```
+edit-a3f8:  E1 → E2 → E5 → E6 → E7[user] → E8[assistant] → ...
+```
+
+If the user edits again (say, E7), we branch again:
+
+```
+edit-a3f8:  E1 → E2 → E5 → E6 → E7 → E8          (abandoned)
+edit-b91c:  E1 → E2 → E5 → E6 → E9 → E10          (active)
+                                  ↑
+                             fork from E6
+```
+
+`includeParentBranches=True` walks up the chain automatically — branches of branches work.
 
 ### Feasibility Assessment
 
