@@ -157,32 +157,61 @@ export async function streamChat(opts: StreamChatOptions): Promise<void> {
     }
     if (AUTH_MODE === 'local') body.email = email
 
-    const res = await fetch(`${API_BASE}/chat-stream`, {
+    // Try streaming endpoint first (AgentCore Runtime in prod)
+    const streamRes = await fetch(`${API_BASE}/chat-stream`, {
       method: 'POST', headers,
       body: JSON.stringify(body),
       signal,
     })
 
-    if (!res.ok) {
-      const errBody = await res.text()
-      throw new Error(`Stream request failed (${res.status}): ${errBody}`)
+    if (streamRes.ok && streamRes.body) {
+      const reader = streamRes.body.getReader()
+      const decoder = new TextDecoder()
+      let fullText = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        const chunk = decoder.decode(value, { stream: true })
+        fullText += chunk
+        onChunk(chunk)
+      }
+      const remaining = decoder.decode()
+      if (remaining) { fullText += remaining; onChunk(remaining) }
+      onDone(fullText)
+      return
     }
-    if (!res.body) throw new Error('No response body — streaming not supported')
 
-    const reader  = res.body.getReader()
-    const decoder = new TextDecoder()
-    let fullText = ''
-
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      const chunk = decoder.decode(value, { stream: true })
-      fullText += chunk
-      onChunk(chunk)
+    // Fallback: async chat Lambda (POST /chat → poll /chat/{job_id})
+    const chatRes = await fetch(`${API_BASE}/chat`, {
+      method: 'POST', headers,
+      body: JSON.stringify(body),
+      signal,
+    })
+    if (!chatRes.ok) {
+      const errBody = await chatRes.text()
+      throw new Error(`Chat request failed (${chatRes.status}): ${errBody}`)
     }
-    const remaining = decoder.decode()
-    if (remaining) { fullText += remaining; onChunk(remaining) }
-    onDone(fullText)
+    const { job_id } = await chatRes.json()
+
+    // Poll for result
+    const pollHeaders = await authHeaders()
+    for (let i = 0; i < 120; i++) {
+      if (signal?.aborted) return
+      await new Promise(r => setTimeout(r, 2000))
+      const pollRes = await fetch(`${API_BASE}/chat/${job_id}`, { headers: pollHeaders, signal })
+      if (!pollRes.ok) continue
+      const result = await pollRes.json()
+      if (result.status === 'done') {
+        const text = result.response || ''
+        onChunk(text)
+        onDone(text)
+        return
+      }
+      if (result.status === 'error') {
+        throw new Error(result.error || 'Agent error')
+      }
+    }
+    throw new Error('Chat timed out after 4 minutes')
   } catch (err: unknown) {
     if (err instanceof Error && err.name === 'AbortError') return
     onError(err instanceof Error ? err : new Error(String(err)))

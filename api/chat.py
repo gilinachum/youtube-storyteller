@@ -17,8 +17,8 @@ SESSIONS_TABLE = os.environ.get("SESSIONS_TABLE", "storyteller-sessions")
 JOBS_TABLE = os.environ.get("JOBS_TABLE", "storyteller-jobs")
 SELF_FUNCTION_NAME = os.environ.get("AWS_LAMBDA_FUNCTION_NAME", "storyteller-chat")
 
-dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
-lambda_client = boto3.client("lambda", region_name="us-east-1")
+dynamodb = boto3.resource("dynamodb")
+lambda_client = boto3.client("lambda")
 
 
 def handler(event, context):

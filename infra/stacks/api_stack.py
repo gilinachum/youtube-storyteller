@@ -168,6 +168,20 @@ class ApiStack(Stack):
         job_res = transcribe_res.add_resource("{job_name}")
         job_res.add_method("GET", apigw.LambdaIntegration(transcribe_fn), **default_auth)
 
+        # ── Chat (async Lambda pattern — used when no AgentCore Runtime) ──
+        chat_fn = _mk_fn("Chat", "chat.handler", timeout=900, memory=512)
+        chat_fn.add_environment("JOBS_TABLE", data_stack.jobs_table.table_name)
+        data_stack.jobs_table.grant_read_write_data(lambda_role)
+        # Self-invocation for async pattern (broad grant to avoid circular dep)
+        lambda_role.add_to_policy(iam.PolicyStatement(
+            actions=["lambda:InvokeFunction"],
+            resources=[f"arn:aws:lambda:{self.region}:{self.account}:function:{prefix}-chat"],
+        ))
+        chat_res = api.root.add_resource("chat")
+        chat_res.add_method("POST", apigw.LambdaIntegration(chat_fn), **default_auth)
+        chat_job_res = chat_res.add_resource("{job_id}")
+        chat_job_res.add_method("GET", apigw.LambdaIntegration(chat_fn), **default_auth)
+
         # ── AgentCore Runtime streaming (only if runtime ID provided) ─────
         RUNTIME_ID = self.node.try_get_context("agentRuntimeId") or os.environ.get("AGENT_RUNTIME_ID", "")
         if RUNTIME_ID:
