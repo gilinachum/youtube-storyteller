@@ -134,19 +134,42 @@ def _get_or_create_agent(email: str, app_session_id: str) -> "Agent":
     return agent
 
 
-def _parse_payload(payload: dict) -> tuple[str, str, str, list, str]:
+def _extract_email_from_jwt(context) -> str:
+    """Extract email from JWT claims in the Authorization header."""
+    try:
+        headers = getattr(context, "request_headers", None) or {}
+        auth = headers.get("authorization", headers.get("Authorization", ""))
+        if auth.startswith("Bearer "):
+            import base64
+            token = auth[7:]
+            # Decode JWT payload (second segment) without verification
+            # (already validated by AgentCore's customJWTAuthorizer)
+            payload_b64 = token.split(".")[1]
+            # Add padding
+            payload_b64 += "=" * (4 - len(payload_b64) % 4)
+            claims = json.loads(base64.urlsafe_b64decode(payload_b64))
+            return claims.get("email", "").strip().lower()
+    except Exception as e:
+        logger.warning(f"Failed to extract email from JWT: {e}")
+    return ""
+
+
+def _parse_payload(payload: dict, context=None) -> tuple[str, str, str, list, str]:
     """Parse and validate the invocation payload.
 
     Returns (email, message, app_session_id, file_refs, full_prompt).
     Raises ValueError on missing required fields.
     """
     email = payload.get("email", "").strip().lower()
+    # Fallback: extract email from JWT if not in payload (Cognito auth mode)
+    if not email and context:
+        email = _extract_email_from_jwt(context)
     message = payload.get("message", "").strip()
     app_session_id = payload.get("session_id", "")
     file_refs = payload.get("file_refs", [])
 
     if not email:
-        raise ValueError("email is required")
+        raise ValueError("email is required (send in body or via JWT)")
     if not message:
         raise ValueError("message is required")
     if not app_session_id:
@@ -177,7 +200,7 @@ async def invoke(payload, context):
     The full response is persisted to DynamoDB after streaming completes.
     """
     try:
-        email, message, app_session_id, file_refs, full_prompt = _parse_payload(payload)
+        email, message, app_session_id, file_refs, full_prompt = _parse_payload(payload, context)
     except ValueError as e:
         # For validation errors, yield error as a single chunk
         async def error_stream():
