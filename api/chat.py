@@ -149,7 +149,7 @@ def _run_agent_async(event):
 
             update_progress("מריץ את המודל...")
             resp = bedrock.converse(
-                modelId="us.anthropic.claude-sonnet-4-20250514-v1:0",
+                modelId="us.anthropic.claude-sonnet-4-6",
                 messages=messages,
                 system=[{"text": "You are StoryTeller, an AI assistant that helps plan YouTube videos. Respond in the same language the user writes in."}],
                 inferenceConfig={"maxTokens": 4096},
