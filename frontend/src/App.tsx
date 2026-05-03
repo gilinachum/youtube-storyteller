@@ -12,10 +12,15 @@ export default function App() {
   const [challengeUser, setChallengeUser] = useState<any>(null)
 
   useEffect(() => {
-    getAuthAsync().then(info => {
-      setAuthState(info)
-      setLoading(false)
-    })
+    getAuthAsync()
+      .then(info => {
+        setAuthState(info)
+        setLoading(false)
+      })
+      .catch(err => {
+        console.error('Auth init failed:', err)
+        setLoading(false)
+      })
   }, [])
 
   const handleLocalLogin = (e: React.FormEvent) => {
