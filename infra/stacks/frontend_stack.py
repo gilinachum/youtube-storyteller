@@ -28,6 +28,7 @@ class FrontendStack(Stack):
     def __init__(self, scope: Construct, id: str,
                  uploads_bucket_arn: str = "",
                  api = None,  # type: Optional[apigw.RestApi]
+                 prefix: str = "storyteller",
                  **kwargs):
         super().__init__(scope, id, **kwargs)
 
@@ -47,7 +48,7 @@ class FrontendStack(Stack):
         # serve /index.html so React Router can handle it client-side.
         spa_rewrite = cf.Function(
             self, "SpaRewrite",
-            function_name="storyteller-spa-rewrite",
+            function_name=f"{prefix}-spa-rewrite",
             code=cf.FunctionCode.from_inline("""
 function handler(event) {
   var request = event.request;
@@ -67,7 +68,7 @@ function handler(event) {
         # (The API stage segment is added automatically by RestApiOrigin.)
         api_rewrite = cf.Function(
             self, "ApiRewrite",
-            function_name="storyteller-api-rewrite",
+            function_name=f"{prefix}-api-rewrite",
             code=cf.FunctionCode.from_inline("""
 function handler(event) {
   var request = event.request;

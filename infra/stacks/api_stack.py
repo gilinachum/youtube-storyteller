@@ -168,35 +168,39 @@ class ApiStack(Stack):
         job_res = transcribe_res.add_resource("{job_name}")
         job_res.add_method("GET", apigw.LambdaIntegration(transcribe_fn), **default_auth)
 
-        # ── AgentCore Runtime streaming ─────────────────────────────────────
+        # ── AgentCore Runtime streaming (only if runtime ID provided) ─────
         RUNTIME_ID = self.node.try_get_context("agentRuntimeId") or os.environ.get("AGENT_RUNTIME_ID", "")
-        RUNTIME_ENDPOINT = (
-            f"https://bedrock-agentcore.{self.region}.amazonaws.com"
-            f"/runtimes/{RUNTIME_ID}/invocations"
-            f"?qualifier=DEFAULT&accountId={self.account}"
-        )
-        runtime_integration = apigw.HttpIntegration(
-            RUNTIME_ENDPOINT,
-            http_method="POST",
-            proxy=True,
-            options=apigw.IntegrationOptions(
-                connection_type=apigw.ConnectionType.INTERNET,
-                timeout=Duration.minutes(15),
-                request_parameters={
-                    "integration.request.header.Content-Type": "'application/json'",
-                },
-            ),
-        )
-        chat_stream_res = api.root.add_resource("chat-stream")
-        stream_method = chat_stream_res.add_method(
-            "POST",
-            runtime_integration,
-            **default_auth,
-        )
-        cfn_method = stream_method.node.default_child
-        cfn_method.add_property_override("Integration.ResponseTransferMode", "STREAM")
+        if RUNTIME_ID:
+            RUNTIME_ENDPOINT = (
+                f"https://bedrock-agentcore.{self.region}.amazonaws.com"
+                f"/runtimes/{RUNTIME_ID}/invocations"
+                f"?qualifier=DEFAULT&accountId={self.account}"
+            )
+            runtime_integration = apigw.HttpIntegration(
+                RUNTIME_ENDPOINT,
+                http_method="POST",
+                proxy=True,
+                options=apigw.IntegrationOptions(
+                    connection_type=apigw.ConnectionType.INTERNET,
+                    timeout=Duration.minutes(15),
+                    request_parameters={
+                        "integration.request.header.Content-Type": "'application/json'",
+                    },
+                ),
+            )
+            chat_stream_res = api.root.add_resource("chat-stream")
+            stream_method = chat_stream_res.add_method(
+                "POST",
+                runtime_integration,
+                **default_auth,
+            )
+            cfn_method = stream_method.node.default_child
+            cfn_method.add_property_override("Integration.ResponseTransferMode", "STREAM")
+            cdk.CfnOutput(self, "StreamEndpoint", value=f"{api.url}chat-stream")
+        else:
+            # No runtime ID — skip chat-stream route (dev without AgentCore Runtime)
+            pass
 
         # ── Outputs ──────────────────────────────────────────────────────────
         cdk.CfnOutput(self, "ApiUrl", value=api.url)
         cdk.CfnOutput(self, "RestApiId", value=api.rest_api_id)
-        cdk.CfnOutput(self, "StreamEndpoint", value=f"{api.url}chat-stream")

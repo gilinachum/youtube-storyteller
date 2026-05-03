@@ -33,7 +33,7 @@ if stage not in CONFIG:
 cfg = CONFIG[stage]
 env = cdk.Environment(
     account=os.environ.get("CDK_DEFAULT_ACCOUNT"),
-    region=os.environ.get("CDK_DEFAULT_REGION", cfg["region"]),
+    region=cfg["region"],  # stage controls region, not env var
 )
 
 data = DataStack(app, f"{cfg['prefix']}-data",
@@ -51,6 +51,7 @@ api = ApiStack(app, f"{cfg['prefix']}-api",
 frontend = FrontendStack(app, f"{cfg['prefix']}-frontend",
     uploads_bucket_arn=data.uploads_bucket.bucket_arn,
     api=api.api,
+    prefix=cfg["prefix"],
     env=env,
 )
 frontend.add_dependency(api)
