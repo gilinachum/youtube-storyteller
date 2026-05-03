@@ -120,15 +120,21 @@ def _get_or_create_agent(email: str, app_session_id: str) -> "Agent":
     if cache_key in _agents:
         return _agents[cache_key]
 
-    logger.info("Cold start for session %s - loading history from DynamoDB", app_session_id)
+    logger.info("Cold start for session %s", app_session_id)
     agent = create_agent(email=email, session_id=app_session_id)
 
-    history = _load_history(app_session_id)
-    if history:
-        logger.info("Loaded %d messages from DynamoDB for session %s", len(history), app_session_id)
-        _inject_history(agent, history)
+    # If session manager is active, it handles history loading automatically.
+    # Only fall back to manual DDB history injection if no session manager.
+    if not getattr(agent, 'session_manager', None):
+        logger.info("No session manager — loading history from DynamoDB for session %s", app_session_id)
+        history = _load_history(app_session_id)
+        if history:
+            logger.info("Loaded %d messages from DynamoDB for session %s", len(history), app_session_id)
+            _inject_history(agent, history)
+        else:
+            logger.info("New session %s - no history to load", app_session_id)
     else:
-        logger.info("New session %s - no history to load", app_session_id)
+        logger.info("Session manager active — history will be loaded automatically for session %s", app_session_id)
 
     _agents[cache_key] = agent
     return agent
@@ -236,8 +242,10 @@ async def invoke(payload, context):
     # Ensure session record exists
     _ensure_session(email, app_session_id, now)
 
-    # Save user message (with file refs so they render in history)
-    _save_message(app_session_id, "user", full_prompt, now)
+    # Save user message — only if no session manager (it handles persistence)
+    has_session_manager = getattr(agent, 'session_manager', None) is not None
+    if not has_session_manager:
+        _save_message(app_session_id, "user", full_prompt, now)
 
     # Tool name to Hebrew progress label mapping
     TOOL_LABELS = {
@@ -332,10 +340,11 @@ async def invoke(payload, context):
             except (asyncio.CancelledError, Exception):
                 pass
 
-        # Persist the complete response to DynamoDB
+        # Persist the complete response — only if no session manager
         complete_response = "".join(full_response)
         resp_time = datetime.now(timezone.utc).isoformat()
-        _save_message(app_session_id, "assistant", complete_response, resp_time)
+        if not has_session_manager:
+            _save_message(app_session_id, "assistant", complete_response, resp_time)
         _ensure_session(email, app_session_id, resp_time)
 
         logger.info(

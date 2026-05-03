@@ -107,7 +107,7 @@ aws bedrock-agentcore-control update-agent-runtime \
   --agent-runtime-artifact "{\"codeConfiguration\":{\"code\":{\"s3\":{\"bucket\":\"$S3_BUCKET\",\"prefix\":\"$AGENT_NAME/deployment.zip\"}},\"runtime\":\"PYTHON_3_13\",\"entryPoint\":[\"opentelemetry-instrument\",\"agent/runtime_app.py\"]}}" \
   --authorizer-configuration "{\"customJWTAuthorizer\":{\"discoveryUrl\":\"$COGNITO_DISCOVERY_URL\",\"allowedAudience\":[\"$COGNITO_AUDIENCE\"]}}" \
   --request-header-configuration '{"requestHeaderAllowlist":["Authorization"]}' \
-  --environment-variables "{\"MESSAGES_TABLE\":\"$MESSAGES_TABLE\",\"SESSIONS_TABLE\":\"$SESSIONS_TABLE\",\"UPLOAD_BUCKET\":\"$UPLOAD_BUCKET\"}" \
+  --environment-variables "{\"MESSAGES_TABLE\":\"$MESSAGES_TABLE\",\"SESSIONS_TABLE\":\"$SESSIONS_TABLE\",\"UPLOAD_BUCKET\":\"$UPLOAD_BUCKET\",\"AGENTCORE_MEMORY_ID\":\"${AGENTCORE_MEMORY_ID:-}\"}" \
   --output text --query "status"
 
 echo "⏳ Waiting for runtime to be READY..."
