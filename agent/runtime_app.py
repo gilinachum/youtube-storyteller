@@ -125,7 +125,7 @@ def _get_or_create_agent(email: str, app_session_id: str) -> "Agent":
 
     # If session manager is active, it handles history loading automatically.
     # Only fall back to manual DDB history injection if no session manager.
-    if not getattr(agent, 'session_manager', None):
+    if not getattr(agent, '_session_manager', None):
         logger.info("No session manager — loading history from DynamoDB for session %s", app_session_id)
         history = _load_history(app_session_id)
         if history:
@@ -243,7 +243,7 @@ async def invoke(payload, context):
     _ensure_session(email, app_session_id, now)
 
     # Save user message — only if no session manager (it handles persistence)
-    has_session_manager = getattr(agent, 'session_manager', None) is not None
+    has_session_manager = getattr(agent, '_session_manager', None) is not None
     if not has_session_manager:
         _save_message(app_session_id, "user", full_prompt, now)
 
