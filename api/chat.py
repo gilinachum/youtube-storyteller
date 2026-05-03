@@ -168,7 +168,7 @@ def _run_agent_async(event):
         _ensure_session(email, session_id, now)
 
         # Update job as complete
-        _write_job(job_id, session_id, email, "complete", now, response=agent_response)
+        _write_job(job_id, session_id, email, "done", now, response=agent_response)
 
     except Exception as e:
         import traceback
