@@ -27,7 +27,7 @@ FRONTEND_DIST = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", 
 class FrontendStack(Stack):
     def __init__(self, scope: Construct, id: str,
                  uploads_bucket_arn: str = "",
-                 api: apigw.RestApi | None = None,
+                 api = None,  # type: Optional[apigw.RestApi]
                  **kwargs):
         super().__init__(scope, id, **kwargs)
 
