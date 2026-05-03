@@ -135,30 +135,41 @@ def _get_or_create_agent(email: str, app_session_id: str) -> "Agent":
 
 
 def _extract_email_from_jwt(context) -> str:
-    """Extract email from JWT claims in the Authorization header."""
+    """Extract email from JWT claims via AgentCore workload access token."""
     try:
-        # Try request_headers first
-        headers = getattr(context, "request_headers", None) or {}
-        logger.info(f"Context request_headers keys: {list(headers.keys()) if headers else 'empty'}")
+        import base64
         
-        # Also try the underlying request object
+        # Get headers from the request object
+        headers = getattr(context, "request_headers", None) or {}
         if not headers:
             request = getattr(context, "request", None)
             if request and hasattr(request, "headers"):
                 headers = dict(request.headers)
-                logger.info(f"Request headers keys: {list(headers.keys())}")
         
-        auth = headers.get("authorization", headers.get("Authorization", ""))
-        if auth.startswith("Bearer "):
-            import base64
-            token = auth[7:]
-            # Decode JWT payload (second segment) without verification
-            # (already validated by AgentCore's customJWTAuthorizer)
-            payload_b64 = token.split(".")[1]
-            # Add padding
-            payload_b64 += "=" * (4 - len(payload_b64) % 4)
-            claims = json.loads(base64.urlsafe_b64decode(payload_b64))
-            return claims.get("email", "").strip().lower()
+        # AgentCore replaces Authorization with workloadaccesstoken
+        # Try multiple possible header names
+        token = (
+            headers.get("workloadaccesstoken", "") or
+            headers.get("x-amzn-bedrock-agentcore-runtime-workload-accesstoken", "") or
+            headers.get("authorization", headers.get("Authorization", ""))
+        )
+        if token.startswith("Bearer "):
+            token = token[7:]
+        
+        if not token or "." not in token:
+            logger.warning(f"No JWT token found in headers")
+            return ""
+        
+        # Decode JWT payload without verification (already validated by AgentCore)
+        payload_b64 = token.split(".")[1]
+        payload_b64 += "=" * (4 - len(payload_b64) % 4)
+        claims = json.loads(base64.urlsafe_b64decode(payload_b64))
+        logger.info(f"JWT claims keys: {list(claims.keys())}")
+        
+        email = claims.get("email", claims.get("sub", "")).strip().lower()
+        if email:
+            logger.info(f"Extracted email from JWT: {email}")
+        return email
     except Exception as e:
         logger.warning(f"Failed to extract email from JWT: {e}")
     return ""
