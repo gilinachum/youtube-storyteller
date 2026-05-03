@@ -1,7 +1,7 @@
-"""StoryTeller — AgentCore Runtime entrypoint.
+"""StoryTeller - AgentCore Runtime entrypoint.
 
 Wraps the Strands agent with BedrockAgentCoreApp for deployment on AgentCore Runtime.
-Each runtime session gets its own process — we keep the Agent instance alive for the
+Each runtime session gets its own process - we keep the Agent instance alive for the
 session lifetime. On cold start (new session or session restart), we reload conversation
 history from DynamoDB.
 
@@ -120,7 +120,7 @@ def _get_or_create_agent(email: str, app_session_id: str) -> "Agent":
     if cache_key in _agents:
         return _agents[cache_key]
 
-    logger.info("Cold start for session %s — loading history from DynamoDB", app_session_id)
+    logger.info("Cold start for session %s - loading history from DynamoDB", app_session_id)
     agent = create_agent(email=email, session_id=app_session_id)
 
     history = _load_history(app_session_id)
@@ -128,7 +128,7 @@ def _get_or_create_agent(email: str, app_session_id: str) -> "Agent":
         logger.info("Loaded %d messages from DynamoDB for session %s", len(history), app_session_id)
         _inject_history(agent, history)
     else:
-        logger.info("New session %s — no history to load", app_session_id)
+        logger.info("New session %s - no history to load", app_session_id)
 
     _agents[cache_key] = agent
     return agent
@@ -137,7 +137,17 @@ def _get_or_create_agent(email: str, app_session_id: str) -> "Agent":
 def _extract_email_from_jwt(context) -> str:
     """Extract email from JWT claims in the Authorization header."""
     try:
+        # Try request_headers first
         headers = getattr(context, "request_headers", None) or {}
+        logger.info(f"Context request_headers keys: {list(headers.keys()) if headers else 'empty'}")
+        
+        # Also try the underlying request object
+        if not headers:
+            request = getattr(context, "request", None)
+            if request and hasattr(request, "headers"):
+                headers = dict(request.headers)
+                logger.info(f"Request headers keys: {list(headers.keys())}")
+        
         auth = headers.get("authorization", headers.get("Authorization", ""))
         if auth.startswith("Bearer "):
             import base64
@@ -187,7 +197,7 @@ def _parse_payload(payload: dict, context=None) -> tuple[str, str, str, list, st
 
 @app.entrypoint
 async def invoke(payload, context):
-    """Main entrypoint — returns async generator for streaming.
+    """Main entrypoint - returns async generator for streaming.
 
     Expected payload:
     {
@@ -203,8 +213,10 @@ async def invoke(payload, context):
         email, message, app_session_id, file_refs, full_prompt = _parse_payload(payload, context)
     except ValueError as e:
         # For validation errors, yield error as a single chunk
+        # Capture e immediately - Python 3.13 deletes it after except block
+        error_msg = str(e)
         async def error_stream():
-            yield json.dumps({"error": str(e)})
+            yield json.dumps({"error": error_msg})
         return error_stream()
 
     now = datetime.now(timezone.utc).isoformat()
@@ -273,7 +285,7 @@ async def invoke(payload, context):
                             event = await asyncio.wait_for(asyncio.shield(agent_next), timeout=5.0)
                             break  # Got an agent event
                         except asyncio.TimeoutError:
-                            # No agent event yet — yield keepalive
+                            # No agent event yet - yield keepalive
                             yield "__KEEPALIVE__"
                             continue
 
@@ -283,7 +295,7 @@ async def invoke(payload, context):
                         full_response.append(chunk)
                         yield chunk
 
-                    # Detect tool use start — emit progress event
+                    # Detect tool use start - emit progress event
                     tool_use = (
                         event.get("event", {})
                         .get("contentBlockStart", {})
@@ -318,7 +330,7 @@ async def invoke(payload, context):
         _ensure_session(email, app_session_id, resp_time)
 
         logger.info(
-            "Streaming complete for session %s — %d chars",
+            "Streaming complete for session %s - %d chars",
             app_session_id,
             len(complete_response),
         )
