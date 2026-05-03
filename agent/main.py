@@ -32,7 +32,7 @@ def create_agent(email: str = "", session_id: str = "") -> Agent:
 
     model = BedrockModel(
         model_id="us.anthropic.claude-sonnet-4-6",
-        region_name="us-east-1",
+        region_name=os.environ.get("AWS_REGION", "us-west-2"),
         max_tokens=8192,
     )
 

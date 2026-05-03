@@ -11,7 +11,7 @@ from strands import tool
 
 UPLOAD_BUCKET = os.environ.get("UPLOAD_BUCKET", "")
 SESSIONS_TABLE = os.environ.get("SESSIONS_TABLE", "storyteller-sessions")
-REGION = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
+REGION = os.environ.get("AWS_REGION", os.environ.get("AWS_DEFAULT_REGION", "us-west-2"))
 
 s3 = boto3.client("s3", region_name=REGION)
 dynamodb = boto3.resource("dynamodb", region_name=REGION)

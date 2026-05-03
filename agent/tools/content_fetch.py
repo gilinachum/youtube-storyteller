@@ -15,7 +15,7 @@ _sm_client = None
 def _get_secrets_client():
     global _sm_client
     if _sm_client is None:
-        _sm_client = boto3.client("secretsmanager", region_name="us-east-1")
+        _sm_client = boto3.client("secretsmanager", region_name=os.environ.get("AWS_REGION", "us-west-2"))
     return _sm_client
 
 

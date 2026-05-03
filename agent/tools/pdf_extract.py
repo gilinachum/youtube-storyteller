@@ -7,7 +7,7 @@ import pdfplumber
 from strands import tool
 
 UPLOAD_BUCKET = os.environ.get("UPLOAD_BUCKET", "")
-s3 = boto3.client("s3", region_name="us-east-1")
+s3 = boto3.client("s3", region_name=os.environ.get("AWS_REGION", "us-west-2"))
 
 
 def _resolve_file(file_path: str) -> str:

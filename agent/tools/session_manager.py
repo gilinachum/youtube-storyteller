@@ -6,7 +6,7 @@ from strands import tool
 from datetime import datetime, timezone
 
 TABLE_NAME = os.environ.get("SESSIONS_TABLE", "storyteller-sessions")
-dynamodb = boto3.resource("dynamodb", region_name=os.environ.get("AWS_DEFAULT_REGION", "us-east-1"))
+dynamodb = boto3.resource("dynamodb", region_name=os.environ.get("AWS_REGION", os.environ.get("AWS_DEFAULT_REGION", "us-west-2")))
 
 
 def make_name_session_tool(email: str, session_id: str):

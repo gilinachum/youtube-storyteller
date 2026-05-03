@@ -37,7 +37,7 @@ logging.basicConfig(level=logging.INFO)
 # ── DynamoDB tables ──────────────────────────────────────────────────────────
 MESSAGES_TABLE = os.environ.get("MESSAGES_TABLE", "storyteller-messages")
 SESSIONS_TABLE = os.environ.get("SESSIONS_TABLE", "storyteller-sessions")
-REGION = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
+REGION = os.environ.get("AWS_REGION", os.environ.get("AWS_DEFAULT_REGION", "us-west-2"))
 
 dynamodb = boto3.resource("dynamodb", region_name=REGION)
 
