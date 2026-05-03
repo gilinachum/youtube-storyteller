@@ -105,41 +105,55 @@ def _extract_display_text(message: dict) -> str:
 
 
 def _get_messages_from_memory(session_id: str, email: str) -> list | None:
-    """Try to read messages from AgentCore Memory. Returns None if unavailable."""
+    """Try to read messages from AgentCore Memory via boto3. Returns None if unavailable."""
     if not AGENTCORE_MEMORY_ID or not email:
         return None
 
     try:
-        from bedrock_agentcore.memory.integrations.strands.config import AgentCoreMemoryConfig
-        from bedrock_agentcore.memory.integrations.strands.session_manager import AgentCoreMemorySessionManager
+        region = os.environ.get("AWS_REGION", "us-west-2")
+        client = boto3.client("bedrock-agentcore", region_name=region)
 
-        config = AgentCoreMemoryConfig(
-            memory_id=AGENTCORE_MEMORY_ID,
-            session_id=session_id,
-            actor_id=_email_to_actor_id(email),
-        )
-        sm = AgentCoreMemorySessionManager(
-            agentcore_memory_config=config,
-            region_name=os.environ.get("AWS_REGION", "us-west-2"),
+        actor_id = _email_to_actor_id(email)
+        response = client.list_events(
+            memoryId=AGENTCORE_MEMORY_ID,
+            actorId=actor_id,
+            sessionId=session_id,
+            maxResults=200,
         )
 
-        session_messages = sm.list_messages(
-            session_id=session_id,
-            agent_id="storyteller",
-        )
-
-        if not session_messages:
+        events = response.get("events", [])
+        if not events:
             return None  # Empty — fall back to DDB (might have legacy data)
 
         messages = []
-        for sm_msg in session_messages:
-            msg = sm_msg.message
-            messages.append({
-                "role": msg["role"],
-                "content": _extract_display_text(msg),
-                "timestamp": sm_msg.created_at,
-            })
-        return messages
+        for event in events:
+            for payload_item in event.get("payload", []):
+                conv = payload_item.get("conversational")
+                if not conv:
+                    continue
+                role = conv.get("role", "").lower()
+                if role not in ("user", "assistant"):
+                    continue
+                content_text = conv.get("content", {}).get("text", "")
+                # Content is JSON-encoded by the session manager
+                try:
+                    import json as _json
+                    parsed = _json.loads(content_text)
+                    msg_content = parsed.get("message", {})
+                    display_text = _extract_display_text(msg_content)
+                    timestamp = parsed.get("created_at", event.get("eventTimestamp", ""))
+                except (ValueError, KeyError, TypeError):
+                    display_text = content_text
+                    timestamp = event.get("eventTimestamp", "")
+
+                if display_text:
+                    messages.append({
+                        "role": role,
+                        "content": display_text,
+                        "timestamp": str(timestamp),
+                    })
+
+        return messages if messages else None
 
     except Exception as e:
         logger.warning("Failed to read from AgentCore Memory, falling back to DDB: %s", e)
