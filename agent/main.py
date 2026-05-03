@@ -5,6 +5,7 @@ Main entrypoint for the Strands agent.
 
 import sys
 import os
+import logging
 
 # Add the project root to path so agent package is importable
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -25,6 +26,18 @@ from agent.tools.export_document import make_export_document_tool
 from agent.tools.save_user_photo import make_save_user_photo_tool
 from agent.research_agent import create_research_agent
 from agent.thumbnail_agent import create_thumbnail_agent
+
+logger = logging.getLogger(__name__)
+
+
+def email_to_actor_id(email: str) -> str:
+    """Convert email to valid AgentCore actorId.
+
+    AgentCore pattern: [a-zA-Z0-9][a-zA-Z0-9-_/]*
+    'gili@amazon.com' → 'gili-at-amazon-com'
+    'gili+oc3@amazon.com' → 'gili-oc3-at-amazon-com'
+    """
+    return email.replace("@", "-at-").replace("+", "-").replace(".", "-")
 
 
 def create_agent(email: str = "", session_id: str = "") -> Agent:
@@ -70,6 +83,28 @@ def create_agent(email: str = "", session_id: str = "") -> Agent:
         preserve_context=True,
     )
 
+    # Session manager — AgentCore Memory handles message persistence
+    session_manager = None
+    memory_id = os.environ.get("AGENTCORE_MEMORY_ID", "")
+    if email and session_id and memory_id:
+        try:
+            from bedrock_agentcore.memory.integrations.strands.config import AgentCoreMemoryConfig
+            from bedrock_agentcore.memory.integrations.strands.session_manager import AgentCoreMemorySessionManager
+
+            config = AgentCoreMemoryConfig(
+                memory_id=memory_id,
+                session_id=session_id,
+                actor_id=email_to_actor_id(email),
+            )
+            session_manager = AgentCoreMemorySessionManager(
+                agentcore_memory_config=config,
+                region_name=os.environ.get("AWS_REGION", "us-west-2"),
+            )
+            logger.info("AgentCore Memory session manager initialized (memory=%s, session=%s)", memory_id, session_id)
+        except Exception as e:
+            logger.warning("Failed to initialize AgentCore Memory session manager: %s", e)
+            session_manager = None
+
     agent = Agent(
         model=model,
         system_prompt=system_prompt,
@@ -82,6 +117,7 @@ def create_agent(email: str = "", session_id: str = "") -> Agent:
             research_tool,
             thumbnail_tool,
         ],
+        session_manager=session_manager,
     )
 
     return agent

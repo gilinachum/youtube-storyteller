@@ -51,6 +51,19 @@ class ApiStack(Stack):
             actions=["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
             resources=["*"],
         ))
+        # AgentCore Memory permissions
+        lambda_role.add_to_policy(iam.PolicyStatement(
+            actions=[
+                "bedrock-agentcore:CreateEvent",
+                "bedrock-agentcore:ListEvents",
+                "bedrock-agentcore:GetEvent",
+                "bedrock-agentcore:DeleteEvent",
+                "bedrock-agentcore:ListSessions",
+                "bedrock-agentcore:CreateSession",
+                "bedrock-agentcore:GetSession",
+            ],
+            resources=["*"],
+        ))
         data_stack.sessions_table.grant_read_write_data(lambda_role)
         data_stack.messages_table.grant_read_write_data(lambda_role)
         data_stack.uploads_bucket.grant_read_write(lambda_role)
@@ -71,6 +84,11 @@ class ApiStack(Stack):
             "AWS_ACCOUNT_ID": self.account,
             "POWERTOOLS_SERVICE_NAME": prefix,
         }
+
+        # AgentCore Memory ID (set via env var or CDK context)
+        agentcore_memory_id = self.node.try_get_context("agentcoreMemoryId") or os.environ.get("AGENTCORE_MEMORY_ID", "")
+        if agentcore_memory_id:
+            common_env["AGENTCORE_MEMORY_ID"] = agentcore_memory_id
 
         # ── Lambda factory ──────────────────────────────────────────────────
         def _mk_fn(name: str, handler: str, timeout: int = 30, memory: int = 256) -> lambda_.Function:

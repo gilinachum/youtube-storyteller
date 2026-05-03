@@ -111,36 +111,30 @@ def _run_agent_async(event):
 
         update_progress("מתחיל לעבד...")
 
-        # Load history
-        from boto3.dynamodb.conditions import Key
-        msgs_table = dynamodb.Table(MESSAGES_TABLE)
-        result = msgs_table.query(
-            KeyConditionExpression=Key("session_id").eq(session_id),
-            Limit=20,
-            ScanIndexForward=False,
-        )
-        history = list(reversed(result.get("Items", [])))
-
         update_progress("חוקר ומנתח את הנושא...")
 
         # Try full agent first, fall back to direct Bedrock
         try:
             from agent.main import create_agent
-            agent = create_agent()
-
-            history_text = "\n".join([
-                f"{'User' if m['role'] == 'user' else 'Assistant'}: {m['content']}"
-                for m in history[-10:]
-            ])
-            full_prompt = f"[Previous conversation:\n{history_text}\n]\n\nUser: {message}" if history_text else message
+            # Session manager (if configured) auto-loads history and persists messages
+            agent = create_agent(email=email, session_id=session_id)
 
             update_progress("מריץ את האייג'נט...")
-            response = agent(full_prompt)
+            response = agent(message)
             agent_response = str(response)
         except ImportError:
-            # No agent module — use direct Bedrock Converse
+            # No agent module — use direct Bedrock Converse (fallback with manual DDB)
             import boto3 as _boto3
+            from boto3.dynamodb.conditions import Key
             bedrock = _boto3.client("bedrock-runtime")
+            msgs_table = dynamodb.Table(MESSAGES_TABLE)
+
+            result = msgs_table.query(
+                KeyConditionExpression=Key("session_id").eq(session_id),
+                Limit=20,
+                ScanIndexForward=False,
+            )
+            history = list(reversed(result.get("Items", [])))
 
             messages = []
             for m in history[-10:]:
@@ -156,13 +150,14 @@ def _run_agent_async(event):
             )
             agent_response = resp["output"]["message"]["content"][0]["text"]
 
+            # Manual DDB save only for fallback path (no session manager)
+            now_fb = datetime.now(timezone.utc).isoformat()
+            msgs_table.put_item(Item={"session_id": session_id, "timestamp": event["started_at"], "role": "user", "content": message})
+            msgs_table.put_item(Item={"session_id": session_id, "timestamp": now_fb, "role": "assistant", "content": agent_response})
+
         update_progress("מסכם תשובה...")
 
         now = datetime.now(timezone.utc).isoformat()
-
-        # Save messages
-        msgs_table.put_item(Item={"session_id": session_id, "timestamp": event["started_at"], "role": "user", "content": message})
-        msgs_table.put_item(Item={"session_id": session_id, "timestamp": now, "role": "assistant", "content": agent_response})
 
         # Ensure session record
         _ensure_session(email, session_id, now)

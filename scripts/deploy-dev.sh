@@ -79,6 +79,7 @@ export AGENT_RUNTIME_ID="$AGENT_RUNTIME_ID"
 JSII_SILENCE_WARNING_UNTESTED_NODE_VERSION=1 \
 CDK_DEFAULT_REGION="$REGION" cdk deploy --all \
   --context stage="$STAGE" \
+  --context agentcoreMemoryId="${AGENTCORE_MEMORY_ID:-}" \
   --require-approval never \
   --outputs-file "$PROJECT_DIR/cdk-outputs-$STAGE.json"
 cd "$PROJECT_DIR"
@@ -93,6 +94,7 @@ uv run agentcore deploy --agent "$AGENT_NAME" \
   --env BEDROCK_MODEL_ID="$BEDROCK_MODEL_ID" \
   --env BEDROCK_REGION="$REGION" \
   --env DEPLOY_TS="$DEPLOY_TS" \
+  --env AGENTCORE_MEMORY_ID="${AGENTCORE_MEMORY_ID:-}" \
   -auc
 
 # ── Step 5: Re-apply AgentCore runtime config ───────────────────────────

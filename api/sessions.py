@@ -1,6 +1,7 @@
 """Sessions handler — list, retrieve, share conversation sessions + file downloads."""
 import json
 import os
+import logging
 import boto3
 from boto3.dynamodb.conditions import Key
 
@@ -10,9 +11,12 @@ except ImportError:
     from api._auth_context import caller_email
 
 
+logger = logging.getLogger(__name__)
+
 SESSIONS_TABLE = os.environ.get("SESSIONS_TABLE", "storyteller-sessions")
 MESSAGES_TABLE = os.environ.get("MESSAGES_TABLE", "storyteller-messages")
 UPLOAD_BUCKET = os.environ.get("UPLOAD_BUCKET", "")
+AGENTCORE_MEMORY_ID = os.environ.get("AGENTCORE_MEMORY_ID", "")
 
 dynamodb = boto3.resource("dynamodb")
 s3 = boto3.client("s3")
@@ -82,11 +86,76 @@ def list_sessions(email: str):
     return _response(200, {"sessions": all_sessions})
 
 
+def _email_to_actor_id(email: str) -> str:
+    """Convert email to valid AgentCore actorId."""
+    return email.replace("@", "-at-").replace("+", "-").replace(".", "-")
+
+
+def _extract_display_text(message: dict) -> str:
+    """Extract display text from a Converse API message content block list."""
+    content = message.get("content", [])
+    parts = []
+    for block in content:
+        if isinstance(block, dict):
+            if "text" in block:
+                parts.append(block["text"])
+        elif isinstance(block, str):
+            parts.append(block)
+    return "".join(parts)
+
+
+def _get_messages_from_memory(session_id: str, email: str) -> list | None:
+    """Try to read messages from AgentCore Memory. Returns None if unavailable."""
+    if not AGENTCORE_MEMORY_ID or not email:
+        return None
+
+    try:
+        from bedrock_agentcore.memory.integrations.strands.config import AgentCoreMemoryConfig
+        from bedrock_agentcore.memory.integrations.strands.session_manager import AgentCoreMemorySessionManager
+
+        config = AgentCoreMemoryConfig(
+            memory_id=AGENTCORE_MEMORY_ID,
+            session_id=session_id,
+            actor_id=_email_to_actor_id(email),
+        )
+        sm = AgentCoreMemorySessionManager(
+            agentcore_memory_config=config,
+            region_name=os.environ.get("AWS_REGION", "us-west-2"),
+        )
+
+        session_messages = sm.list_messages(
+            session_id=session_id,
+            agent_id="storyteller",
+        )
+
+        if not session_messages:
+            return None  # Empty — fall back to DDB (might have legacy data)
+
+        messages = []
+        for sm_msg in session_messages:
+            msg = sm_msg.message
+            messages.append({
+                "role": msg["role"],
+                "content": _extract_display_text(msg),
+                "timestamp": sm_msg.created_at,
+            })
+        return messages
+
+    except Exception as e:
+        logger.warning("Failed to read from AgentCore Memory, falling back to DDB: %s", e)
+        return None
+
+
 def get_session(session_id: str, email: str = ""):
-    msgs_table = dynamodb.Table(MESSAGES_TABLE)
-    result = msgs_table.query(KeyConditionExpression=Key("session_id").eq(session_id))
-    messages = result.get("Items", [])
-    messages.sort(key=lambda m: m.get("timestamp", ""))
+    # Try AgentCore Memory first, fall back to DDB
+    messages = _get_messages_from_memory(session_id, email)
+
+    if messages is None:
+        # Fallback: read from DDB (legacy data or memory unavailable)
+        msgs_table = dynamodb.Table(MESSAGES_TABLE)
+        result = msgs_table.query(KeyConditionExpression=Key("session_id").eq(session_id))
+        messages = result.get("Items", [])
+        messages.sort(key=lambda m: m.get("timestamp", ""))
 
     # Get session metadata (including files)
     sess_table = dynamodb.Table(SESSIONS_TABLE)

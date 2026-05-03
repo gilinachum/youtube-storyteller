@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useMemo } from 'react'
 
 interface Props {
   onSend: (message: string, files?: UploadedFile[]) => void
@@ -24,6 +24,19 @@ export default function ChatInput({ onSend, disabled, onUpload, onTranscribe }: 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
+
+  // Detect text direction — RTL for Hebrew/Arabic, LTR for Latin/numbers
+  const textDir = useMemo(() => {
+    const trimmed = text.trimStart()
+    if (!trimmed) return 'rtl' // default RTL
+    // Check first meaningful character
+    const firstChar = trimmed.codePointAt(0) || 0
+    // Hebrew: 0x0590-0x05FF, Arabic: 0x0600-0x06FF
+    if ((firstChar >= 0x0590 && firstChar <= 0x05FF) || (firstChar >= 0x0600 && firstChar <= 0x06FF)) return 'rtl'
+    // Latin, digits, common punctuation → LTR
+    if (firstChar >= 0x0020 && firstChar <= 0x007F) return 'ltr'
+    return 'rtl'
+  }, [text])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -233,12 +246,13 @@ export default function ChatInput({ onSend, disabled, onUpload, onTranscribe }: 
             <div className="relative flex-1">
               <textarea
                 ref={textareaRef}
+                dir={textDir}
                 value={text}
                 onChange={e => setText(e.target.value)}
                 onKeyDown={handleKeyDown}
                 onInput={handleInput}
                 placeholder="כתוב לי כאן..."
-                disabled={disabled}
+                disabled={uploading || recording || transcribing}
                 rows={1}
                 className="w-full resize-none px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition text-sm leading-relaxed disabled:opacity-50 disabled:cursor-not-allowed"
               />
