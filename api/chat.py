@@ -108,12 +108,11 @@ def _run_agent_async(event):
     try:
         import sys
         sys.path.insert(0, "/var/task")
-        from agent.main import create_agent
-        from boto3.dynamodb.conditions import Key
 
         update_progress("מתחיל לעבד...")
 
         # Load history
+        from boto3.dynamodb.conditions import Key
         msgs_table = dynamodb.Table(MESSAGES_TABLE)
         result = msgs_table.query(
             KeyConditionExpression=Key("session_id").eq(session_id),
@@ -121,31 +120,41 @@ def _run_agent_async(event):
             ScanIndexForward=False,
         )
         history = list(reversed(result.get("Items", [])))
-        history_text = "\n".join([
-            f"{'User' if m['role'] == 'user' else 'Assistant'}: {m['content']}"
-            for m in history[-10:]
-        ])
-
-        if history_text:
-            full_prompt = f"[Previous conversation:\n{history_text}\n]\n\nUser: {message}"
-        else:
-            full_prompt = message
 
         update_progress("חוקר ומנתח את הנושא...")
 
-        # Create agent with progress callback
-        agent = create_agent()
+        # Try full agent first, fall back to direct Bedrock
+        try:
+            from agent.main import create_agent
+            agent = create_agent()
 
-        # Hook into tool calls for progress updates
-        import strands
-        original_call = agent.__call__
+            history_text = "\n".join([
+                f"{'User' if m['role'] == 'user' else 'Assistant'}: {m['content']}"
+                for m in history[-10:]
+            ])
+            full_prompt = f"[Previous conversation:\n{history_text}\n]\n\nUser: {message}" if history_text else message
 
-        # We'll use the agent's callback handler to track tool usage
-        # For now, update progress based on tool execution logs
-        update_progress("מריץ את האייג'נט...")
+            update_progress("מריץ את האייג'נט...")
+            response = agent(full_prompt)
+            agent_response = str(response)
+        except ImportError:
+            # No agent module — use direct Bedrock Converse
+            import boto3 as _boto3
+            bedrock = _boto3.client("bedrock-runtime")
 
-        response = agent(full_prompt)
-        agent_response = str(response)
+            messages = []
+            for m in history[-10:]:
+                messages.append({"role": m["role"], "content": [{"text": m["content"]}]})
+            messages.append({"role": "user", "content": [{"text": message}]})
+
+            update_progress("מריץ את המודל...")
+            resp = bedrock.converse(
+                modelId="us.anthropic.claude-sonnet-4-20250514-v1:0",
+                messages=messages,
+                system=[{"text": "You are StoryTeller, an AI assistant that helps plan YouTube videos. Respond in the same language the user writes in."}],
+                inferenceConfig={"maxTokens": 4096},
+            )
+            agent_response = resp["output"]["message"]["content"][0]["text"]
 
         update_progress("מסכם תשובה...")
 

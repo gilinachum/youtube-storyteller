@@ -14,8 +14,8 @@ SESSIONS_TABLE = os.environ.get("SESSIONS_TABLE", "storyteller-sessions")
 MESSAGES_TABLE = os.environ.get("MESSAGES_TABLE", "storyteller-messages")
 UPLOAD_BUCKET = os.environ.get("UPLOAD_BUCKET", "")
 
-dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
-s3 = boto3.client("s3", region_name="us-east-1")
+dynamodb = boto3.resource("dynamodb")
+s3 = boto3.client("s3")
 
 
 def handler(event, context):

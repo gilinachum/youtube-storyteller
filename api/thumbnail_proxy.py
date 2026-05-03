@@ -10,7 +10,7 @@ import urllib.parse
 import boto3
 
 UPLOAD_BUCKET = os.environ.get("UPLOAD_BUCKET", "")
-s3 = boto3.client("s3", region_name="us-east-1")
+s3 = boto3.client("s3")
 
 
 def handler(event, context):

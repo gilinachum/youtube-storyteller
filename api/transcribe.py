@@ -17,7 +17,7 @@ except ImportError:
     from api._auth_context import caller_email
 
 UPLOAD_BUCKET = os.environ.get("UPLOAD_BUCKET", "")
-REGION = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
+REGION = os.environ.get("AWS_REGION", os.environ.get("AWS_DEFAULT_REGION", "us-west-2"))
 
 s3 = boto3.client("s3", region_name=REGION)
 transcribe_client = boto3.client("transcribe", region_name=REGION)
