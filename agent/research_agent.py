@@ -6,11 +6,12 @@ The parent agent calls this as a single tool — the sub-agent coordinates
 multiple research tasks internally.
 """
 
+import os
+
 from strands import Agent
 from strands.models import BedrockModel
 
 from agent.tools import (
-import os
     content_fetch,
     web_research,
     trend_analysis,
