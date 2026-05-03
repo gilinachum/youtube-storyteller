@@ -135,36 +135,34 @@ def _get_or_create_agent(email: str, app_session_id: str) -> "Agent":
 
 
 def _extract_email_from_jwt(context) -> str:
-    """Extract email from JWT claims via AgentCore workload access token."""
+    """Extract email from JWT in the Authorization header.
+    
+    Requires requestHeaderAllowlist=["Authorization"] on the AgentCore runtime
+    so the header is forwarded to the handler.
+    """
     try:
         import base64
         
-        # Get headers from the request object
-        headers = getattr(context, "request_headers", None) or {}
-        if not headers:
-            request = getattr(context, "request", None)
-            if request and hasattr(request, "headers"):
-                headers = dict(request.headers)
+        # Get headers from the Starlette request object
+        headers = {}
+        request = getattr(context, "request", None)
+        if request and hasattr(request, "headers"):
+            headers = dict(request.headers)
         
-        # AgentCore replaces Authorization with workloadaccesstoken
-        # Try multiple possible header names
-        token = (
-            headers.get("workloadaccesstoken", "") or
-            headers.get("x-amzn-bedrock-agentcore-runtime-workload-accesstoken", "") or
-            headers.get("authorization", headers.get("Authorization", ""))
-        )
-        if token.startswith("Bearer "):
-            token = token[7:]
+        auth = headers.get("authorization", "")
+        if not auth:
+            logger.warning("No Authorization header found")
+            return ""
         
-        if not token or "." not in token:
-            logger.warning(f"No JWT token found in headers")
+        token = auth.replace("Bearer ", "") if auth.startswith("Bearer ") else auth
+        if "." not in token:
+            logger.warning("Authorization header is not a JWT")
             return ""
         
         # Decode JWT payload without verification (already validated by AgentCore)
         payload_b64 = token.split(".")[1]
         payload_b64 += "=" * (4 - len(payload_b64) % 4)
         claims = json.loads(base64.urlsafe_b64decode(payload_b64))
-        logger.info(f"JWT claims keys: {list(claims.keys())}")
         
         email = claims.get("email", claims.get("sub", "")).strip().lower()
         if email:
