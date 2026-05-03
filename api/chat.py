@@ -38,7 +38,11 @@ def handler(event, context):
     # POST /chat — kick off async job
     try:
         body = json.loads(event.get("body") or "{}")
-        email = body.get("email", "").strip().lower()
+        # Try Cognito claims first, then body
+        ctx = (event.get("requestContext") or {}).get("authorizer") or {}
+        claims = ctx.get("claims") or {}
+        email = claims.get("email") or body.get("email", "")
+        email = email.strip().lower()
         message = body.get("message", "").strip()
         session_id = body.get("session_id") or str(uuid.uuid4())
 

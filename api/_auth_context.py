@@ -12,9 +12,11 @@ import json
 
 def caller_email(event: dict) -> str:
     """Return the caller's email (always lowercased). '' if missing."""
-    # 1. Authorizer context (populated by an overlay authorizer if present)
+    # 1. Authorizer context
     ctx = (event.get("requestContext") or {}).get("authorizer") or {}
-    email = ctx.get("email") or ctx.get("principalId") or ""
+    # Cognito User Pool authorizer puts claims in ctx["claims"]
+    claims = ctx.get("claims") or {}
+    email = claims.get("email") or ctx.get("email") or ctx.get("principalId") or ""
     if email:
         return email.strip().lower()
 
