@@ -52,6 +52,9 @@ private/
 # Amazon-internal setup script + state (secrets, ARNs, account IDs)
 infra-private/
 
-# Auth-related static files if dropped in by an overlay
+# Auth-related files dropped in by the private overlay
+api/federate_authorizer.py
+api/auth_callback.py
 frontend/public/error/403.html
 frontend/public/js/cfs-handler.js
+infra/layers/federate-auth/
