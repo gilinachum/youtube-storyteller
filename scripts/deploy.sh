@@ -1,46 +1,35 @@
 #!/bin/bash
-# deploy.sh — Deploy agent to AgentCore Runtime.
+# deploy.sh — Unified deploy script for StoryTeller
 #
-# No JWT authorizer on the runtime by default (anyone who can reach it
-# can invoke it). For production, add your own JWT provider via the
-# customJWTAuthorizer configuration.
+# Usage:
+#   ./scripts/deploy.sh dev    # Deploy to dev (us-west-2, Cognito)
+#   ./scripts/deploy.sh prod   # Deploy to prod (us-east-1, Federate)
 #
-# Required env vars (or set in .env):
-#   AGENT_RUNTIME_ID  — AgentCore Runtime ID
-#   MESSAGES_TABLE    — DynamoDB messages table name
-#   SESSIONS_TABLE    — DynamoDB sessions table name
-#   UPLOAD_BUCKET     — S3 upload bucket name
-#   BEDROCK_MODEL_ID  — Bedrock model ID (default: us.anthropic.claude-sonnet-4-6)
-#   BEDROCK_REGION    — Bedrock region (default: us-east-1)
+# No default — you must specify the environment.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-cd "$PROJECT_DIR"
 
-if [ -f "$PROJECT_DIR/.env" ]; then
-  set -a
-  source "$PROJECT_DIR/.env"
-  set +a
+if [ $# -lt 1 ]; then
+  echo "❌ Usage: $0 <dev|prod>"
+  echo ""
+  echo "  dev   — Deploy to us-west-2 with Cognito auth"
+  echo "  prod  — Deploy to us-east-1 with Federate auth"
+  exit 1
 fi
 
-AGENT_RUNTIME_ID="${AGENT_RUNTIME_ID:?Set AGENT_RUNTIME_ID env var}"
-REGION="${BEDROCK_REGION:-us-east-1}"
-MESSAGES_TABLE="${MESSAGES_TABLE:?Set MESSAGES_TABLE env var}"
-SESSIONS_TABLE="${SESSIONS_TABLE:?Set SESSIONS_TABLE env var}"
-UPLOAD_BUCKET="${UPLOAD_BUCKET:?Set UPLOAD_BUCKET env var}"
-BEDROCK_MODEL_ID="${BEDROCK_MODEL_ID:-us.anthropic.claude-sonnet-4-6}"
+STAGE="$1"
 
-echo "🚀 Deploying agent to AgentCore Runtime..."
-DEPLOY_TS=$(date -u +%Y%m%d%H%M%S)
-uv run agentcore deploy \
-  --env MESSAGES_TABLE="$MESSAGES_TABLE" \
-  --env SESSIONS_TABLE="$SESSIONS_TABLE" \
-  --env UPLOAD_BUCKET="$UPLOAD_BUCKET" \
-  --env BEDROCK_MODEL_ID="$BEDROCK_MODEL_ID" \
-  --env BEDROCK_REGION="$REGION" \
-  --env DEPLOY_TS="$DEPLOY_TS" \
-  -auc
-
-echo ""
-echo "✅ Deploy complete. Start a new session to use updated agent."
+case "$STAGE" in
+  dev)
+    exec bash "$SCRIPT_DIR/deploy-dev.sh"
+    ;;
+  prod)
+    exec bash "$SCRIPT_DIR/deploy-prod.sh"
+    ;;
+  *)
+    echo "❌ Unknown stage: $STAGE"
+    echo "   Use 'dev' or 'prod'"
+    exit 1
+    ;;
+esac

@@ -59,3 +59,4 @@ api/auth_callback.py
 frontend/public/error/403.html
 frontend/public/js/cfs-handler.js
 infra/layers/federate-auth/
+.env.dev
