@@ -118,7 +118,7 @@ def _get_messages_from_memory(session_id: str, email: str) -> list | None:
             memoryId=AGENTCORE_MEMORY_ID,
             actorId=actor_id,
             sessionId=session_id,
-            maxResults=200,
+            maxResults=100,
         )
 
         events = response.get("events", [])
