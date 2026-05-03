@@ -4,6 +4,7 @@ import json
 import boto3
 import requests
 from strands import tool
+import os
 
 # In-memory cache for fetched URLs within a session
 _url_cache: dict[str, str] = {}

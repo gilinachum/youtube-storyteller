@@ -4,6 +4,7 @@ import json
 import boto3
 import requests
 from strands import tool
+import os
 
 _sm_client = None
 

@@ -196,9 +196,10 @@ class ApiStack(Stack):
                 proxy=True,
                 options=apigw.IntegrationOptions(
                     connection_type=apigw.ConnectionType.INTERNET,
-                    timeout=Duration.minutes(15),
+                    timeout=Duration.seconds(29),
                     request_parameters={
-                        "integration.request.header.Content-Type": "'application/json'",
+                        "integration.request.header.Content-Type":
+                            "'application/json'",
                     },
                 ),
             )
@@ -206,7 +207,10 @@ class ApiStack(Stack):
             stream_method = chat_stream_res.add_method(
                 "POST",
                 runtime_integration,
-                **default_auth,
+                # No API GW auth — AgentCore validates the JWT directly via its
+                # customJWTAuthorizer config. This avoids API GW consuming the
+                # Authorization header before it reaches AgentCore.
+                authorization_type=apigw.AuthorizationType.NONE,
             )
             cfn_method = stream_method.node.default_child
             cfn_method.add_property_override("Integration.ResponseTransferMode", "STREAM")

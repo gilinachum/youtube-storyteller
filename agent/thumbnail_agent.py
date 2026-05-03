@@ -11,6 +11,7 @@ from strands.models import BedrockModel
 from agent.tools.generate_thumbnail import make_generate_thumbnail_tool
 from agent.tools.list_style_templates import list_style_templates
 from agent.tools.list_user_photos import make_list_user_photos_tool
+import os
 
 
 THUMBNAIL_SYSTEM_PROMPT = """# Role

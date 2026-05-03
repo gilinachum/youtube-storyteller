@@ -15,7 +15,7 @@ function email(): string {
 async function authHeaders(extra: Record<string, string> = {}): Promise<Record<string, string>> {
   const headers: Record<string, string> = { ...extra }
   const token = await getAuthHeader()
-  if (token) headers['Authorization'] = token
+  if (token) headers['Authorization'] = `Bearer ${token}`
   return headers
 }
 

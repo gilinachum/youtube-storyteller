@@ -10,6 +10,7 @@ from strands import Agent
 from strands.models import BedrockModel
 
 from agent.tools import (
+import os
     content_fetch,
     web_research,
     trend_analysis,
