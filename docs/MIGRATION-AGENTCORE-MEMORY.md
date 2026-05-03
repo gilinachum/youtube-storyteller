@@ -609,6 +609,210 @@ With AgentCore Memory branching:
 
 ---
 
+## Dev/Prod Environment Strategy
+
+### Overview
+
+| Aspect | Dev (us-west-2) | Prod (us-east-1) |
+|--------|-----------------|-------------------|
+| Auth | Cognito user pool (email/password) | CFS/Federate (private overlay) |
+| DDB tables | `storyteller-dev-*` | `storyteller-*` |
+| AgentCore Memory | Own memory resource | Own memory resource |
+| Bedrock | `us.anthropic.claude-sonnet-4-6` (cross-region) | Same |
+| CloudFront | Own distribution | Own distribution + CFS |
+| Domain | CF default domain (or dev-storyteller...) | storyteller.gili.people.aws.dev |
+| Overlay | Not applied | Applied (skip-worktree) |
+
+### CDK Parameterization
+
+**`infra/app.py` — env-aware:**
+
+```python
+import os
+import aws_cdk as cdk
+from stacks.data_stack import DataStack
+from stacks.api_stack import ApiStack
+from stacks.frontend_stack import FrontendStack
+from stacks.auth_stack import AuthStack  # NEW
+
+app = cdk.App()
+stage = app.node.try_get_context("stage") or os.environ.get("STAGE", "prod")
+
+CONFIG = {
+    "dev": {
+        "region": "us-west-2",
+        "prefix": "storyteller-dev",
+        "auth_mode": "cognito",
+    },
+    "prod": {
+        "region": "us-east-1",
+        "prefix": "storyteller",
+        "auth_mode": "federate",  # overlay replaces auth
+    },
+}
+
+cfg = CONFIG[stage]
+env = cdk.Environment(
+    account=os.environ.get("CDK_DEFAULT_ACCOUNT"),
+    region=cfg["region"],
+)
+
+data = DataStack(app, f"{cfg['prefix']}-data", prefix=cfg["prefix"], env=env)
+
+# Auth: Cognito for dev, Federate for prod (overlay)
+auth = None
+if cfg["auth_mode"] == "cognito":
+    auth = AuthStack(app, f"{cfg['prefix']}-auth", prefix=cfg["prefix"], env=env)
+
+api = ApiStack(app, f"{cfg['prefix']}-api",
+    data_stack=data,
+    auth_stack=auth,
+    auth_mode=cfg["auth_mode"],
+    prefix=cfg["prefix"],
+    env=env,
+)
+frontend = FrontendStack(app, f"{cfg['prefix']}-frontend",
+    uploads_bucket_arn=data.uploads_bucket.bucket_arn,
+    api=api.api,
+    env=env,
+)
+frontend.add_dependency(api)
+
+cdk.Tags.of(app).add("Project", "StoryTeller")
+cdk.Tags.of(app).add("Stage", stage)
+app.synth()
+```
+
+### New AuthStack (Cognito for Dev)
+
+```python
+# infra/stacks/auth_stack.py
+class AuthStack(Stack):
+    def __init__(self, scope, id, prefix: str, **kwargs):
+        super().__init__(scope, id, **kwargs)
+
+        self.user_pool = cognito.UserPool(
+            self, "UserPool",
+            user_pool_name=f"{prefix}-users",
+            self_sign_up_enabled=False,     # admin creates test users
+            sign_in_aliases=cognito.SignInAliases(email=True),
+            password_policy=cognito.PasswordPolicy(
+                min_length=8,
+                require_uppercase=False,
+                require_symbols=False,
+            ),
+            removal_policy=RemovalPolicy.DESTROY,
+        )
+
+        self.client = self.user_pool.add_client(
+            "WebClient",
+            auth_flows=cognito.AuthFlow(
+                user_password=True,
+                user_srp=True,
+            ),
+            generate_secret=False,
+        )
+
+        self.authorizer = apigw.CognitoUserPoolsAuthorizer(
+            self, "CognitoAuth",
+            cognito_user_pools=[self.user_pool],
+        )
+
+        cdk.CfnOutput(self, "UserPoolId", value=self.user_pool.user_pool_id)
+        cdk.CfnOutput(self, "ClientId", value=self.client.user_pool_client_id)
+```
+
+**Create test users after deploy:**
+```bash
+# One-time setup
+aws cognito-idp admin-create-user \
+    --user-pool-id <pool-id> \
+    --username gili@amazon.com \
+    --temporary-password TempPass123 \
+    --message-action SUPPRESS \
+    --region us-west-2
+
+aws cognito-idp admin-set-user-password \
+    --user-pool-id <pool-id> \
+    --username gili@amazon.com \
+    --password <permanent-password> \
+    --permanent \
+    --region us-west-2
+```
+
+### ApiStack Changes for Auth Mode
+
+The ApiStack accepts `auth_mode` and uses the right authorizer:
+
+```python
+# In ApiStack.__init__:
+if auth_mode == "cognito" and auth_stack:
+    authorizer = auth_stack.authorizer
+    auth_type = apigw.AuthorizationType.COGNITO
+else:
+    # Federate (prod) — existing code
+    authorizer = apigw.TokenAuthorizer(...)
+    auth_type = apigw.AuthorizationType.CUSTOM
+
+default_auth = {
+    "authorizer": authorizer,
+    "authorization_type": auth_type,
+}
+```
+
+### DataStack Changes (Prefixed Table Names)
+
+```python
+class DataStack(Stack):
+    def __init__(self, scope, id, prefix: str = "storyteller", **kwargs):
+        super().__init__(scope, id, **kwargs)
+        self.sessions_table = dynamodb.Table(
+            self, "SessionsTable",
+            table_name=f"{prefix}-sessions",
+            ...
+        )
+        # Same for messages, jobs tables
+```
+
+### Frontend Config Per Env
+
+The frontend needs to know which auth mode + Cognito pool to use:
+
+```bash
+# Dev build:
+VITE_AUTH_MODE=cognito \
+VITE_COGNITO_POOL_ID=us-west-2_xxx \
+VITE_COGNITO_CLIENT_ID=xxx \
+VITE_API_URL=https://xxx.cloudfront.net/api \
+    npm run build
+
+# Prod build (overlay replaces auth.ts entirely):
+VITE_API_URL=https://storyteller.gili.people.aws.dev/api \
+    npm run build
+```
+
+### Deploy Commands
+
+```bash
+# Dev (us-west-2, Cognito auth)
+cd infra && cdk deploy --all --context stage=dev
+
+# Prod (us-east-1, Federate/CFS overlay)
+cd infra && cdk deploy --all --context stage=prod
+# Then: python3 infra-private/setup_midway.py  (CFS protection)
+```
+
+### Key Considerations
+
+1. **Separate AgentCore Memory per env** — dev conversations never leak to prod. CDK custom resource creates a separate memory resource per stage.
+2. **Bedrock quotas** — us-west-2 may have different RPM/TPM limits. Fine for dev load.
+3. **No overlay in dev** — public repo code runs as-is with Cognito. The overlay is only applied for prod deploys.
+4. **Git workflow** — same branch, `--context stage=dev|prod` controls everything. No separate branches for envs.
+5. **Cost** — minimal for dev (pay-per-request DDB, no idle Lambda cost, CF charges only on traffic).
+6. **Migration testing** — run DDB→AgentCore Memory migration in dev first (Phase 5), validate, then prod.
+
+---
+
 ## Future: Long-Term Memory (Phase 2 — later)
 
 Add LTM strategies to the memory resource:
