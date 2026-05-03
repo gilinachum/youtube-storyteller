@@ -12,7 +12,7 @@ from stacks.frontend_stack import FrontendStack
 
 app = cdk.App()
 
-stage = app.node.try_get_context("stage") or os.environ.get("STAGE", "prod")
+stage = app.node.try_get_context("stage") or os.environ.get("STAGE", "dev")
 
 CONFIG = {
     "dev": {
@@ -23,7 +23,7 @@ CONFIG = {
     "prod": {
         "region": "us-east-1",
         "prefix": "storyteller",
-        "auth_mode": "none",  # overlay replaces with federate
+        "auth_mode": "none",  # prod overlay replaces this file with federate auth
     },
 }
 

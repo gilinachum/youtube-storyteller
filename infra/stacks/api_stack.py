@@ -1,8 +1,8 @@
 """API stack — API Gateway + Lambda functions + AgentCore streaming.
 
 Auth mode:
-  - "cognito": Cognito User Pool authorizer (dev)
-  - "none": No authorizer — identity from request body (default/public)
+  - "cognito": Cognito User Pool authorizer (default — dev/public)
+  - "none": No authorizer — identity from request body
   - The prod overlay replaces this file entirely with Federate auth.
 """
 import os
@@ -24,7 +24,7 @@ PROJECT_ROOT = os.path.join(os.path.dirname(__file__), "..", "..")
 class ApiStack(Stack):
     def __init__(self, scope: Construct, id: str,
                  data_stack: DataStack,
-                 auth_mode: str = "none",
+                 auth_mode: str = "cognito",
                  prefix: str = "storyteller",
                  **kwargs):
         super().__init__(scope, id, **kwargs)
