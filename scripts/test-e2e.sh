@@ -11,10 +11,10 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_DIR"
 
-# Load .env if present
-if [ -f "$PROJECT_DIR/.env" ]; then
+# Load env — prefer dev for local testing
+if [ -f "$PROJECT_DIR/.env.dev" ]; then
   set -a
-  source "$PROJECT_DIR/.env"
+  source "$PROJECT_DIR/.env.dev"
   set +a
 fi
 

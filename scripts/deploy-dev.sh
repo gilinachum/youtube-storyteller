@@ -23,21 +23,21 @@ AGENT_NAME="storytellerDev"
 echo "🔧 [$STAGE] Deploying StoryTeller to $REGION..."
 
 # ── Load env ────────────────────────────────────────────────────────────
-if [ -f "$PROJECT_DIR/.env.dev" ]; then
-  set -a; source "$PROJECT_DIR/.env.dev"; set +a
-elif [ -f "$PROJECT_DIR/.env" ]; then
-  set -a; source "$PROJECT_DIR/.env"; set +a
+if [ ! -f "$PROJECT_DIR/.env.dev" ]; then
+  echo "❌ Missing .env.dev — copy from .env.example and fill in dev values"
+  exit 1
 fi
+set -a; source "$PROJECT_DIR/.env.dev"; set +a
 
 # Required vars
-AGENT_RUNTIME_ID="${AGENT_RUNTIME_ID_DEV:?Set AGENT_RUNTIME_ID_DEV in .env}"
-EXECUTION_ROLE="${EXECUTION_ROLE_DEV:?Set EXECUTION_ROLE_DEV in .env}"
-COGNITO_DISCOVERY_URL="${COGNITO_DISCOVERY_URL_DEV:?Set COGNITO_DISCOVERY_URL_DEV in .env}"
-COGNITO_AUDIENCE="${COGNITO_AUDIENCE_DEV:?Set COGNITO_AUDIENCE_DEV in .env}"
-MESSAGES_TABLE="${MESSAGES_TABLE_DEV:-$PREFIX-messages}"
-SESSIONS_TABLE="${SESSIONS_TABLE_DEV:-$PREFIX-sessions}"
-UPLOAD_BUCKET="${UPLOAD_BUCKET_DEV:?Set UPLOAD_BUCKET_DEV in .env}"
-CF_DISTRIBUTION_ID="${CF_DISTRIBUTION_ID_DEV:-}"
+AGENT_RUNTIME_ID="${AGENT_RUNTIME_ID:?Set AGENT_RUNTIME_ID in .env.dev}"
+EXECUTION_ROLE="${EXECUTION_ROLE:?Set EXECUTION_ROLE in .env.dev}"
+COGNITO_DISCOVERY_URL="${COGNITO_DISCOVERY_URL:?Set COGNITO_DISCOVERY_URL in .env.dev}"
+COGNITO_AUDIENCE="${COGNITO_AUDIENCE:?Set COGNITO_AUDIENCE in .env.dev}"
+MESSAGES_TABLE="${MESSAGES_TABLE:-$PREFIX-dev-messages}"
+SESSIONS_TABLE="${SESSIONS_TABLE:-$PREFIX-dev-sessions}"
+UPLOAD_BUCKET="${UPLOAD_BUCKET:?Set UPLOAD_BUCKET in .env.dev}"
+CF_DISTRIBUTION_ID="${CF_DISTRIBUTION_ID:-}"
 BEDROCK_MODEL_ID="${BEDROCK_MODEL_ID:-us.anthropic.claude-sonnet-4-6}"
 S3_BUCKET="bedrock-agentcore-codebuild-sources-726941381086-$REGION"
 

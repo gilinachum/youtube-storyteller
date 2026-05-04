@@ -23,11 +23,11 @@ AGENT_NAME="storyteller"
 echo "🔧 [$STAGE] Deploying StoryTeller to $REGION..."
 
 # ── Load env ────────────────────────────────────────────────────────────
-if [ -f "$PROJECT_DIR/.env.prod" ]; then
-  set -a; source "$PROJECT_DIR/.env.prod"; set +a
-elif [ -f "$PROJECT_DIR/.env" ]; then
-  set -a; source "$PROJECT_DIR/.env"; set +a
+if [ ! -f "$PROJECT_DIR/.env.prod" ]; then
+  echo "❌ Missing .env.prod — copy from .env.example and fill in prod values"
+  exit 1
 fi
+set -a; source "$PROJECT_DIR/.env.prod"; set +a
 
 # Required vars
 AGENT_RUNTIME_ID="${AGENT_RUNTIME_ID:?Set AGENT_RUNTIME_ID in .env}"
