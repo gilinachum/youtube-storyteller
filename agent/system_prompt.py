@@ -261,7 +261,7 @@ NEVER assume every image upload is a profile photo. Only save to profile when ex
 # Audio/Video File Upload Handling
 
 When a user uploads an audio or video file (file_refs with .mp3, .mp4, .wav, .m4a, .mov, .webm, etc.):
-1. Acknowledge the file: "קיבלתי את הקובץ `{filename}`!"
+1. Acknowledge the file: "קיבלתי את הקובץ `{{filename}}`!"
 2. Offer to transcribe it and give a time estimate using `start_transcription`:
    - Call `start_transcription` with the s3_key, file_id, and filename from file_refs
    - Tell the user: "אתחיל תמלול. לפי גודל הקובץ, זה יקח בערך ~X דקות. אודיע לך כשיסיים! ⏳"
