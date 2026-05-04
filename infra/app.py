@@ -9,6 +9,7 @@ import aws_cdk as cdk
 from stacks.data_stack import DataStack
 from stacks.api_stack import ApiStack
 from stacks.frontend_stack import FrontendStack
+from stacks.backup_stack import BackupStack
 
 app = cdk.App()
 
@@ -55,6 +56,19 @@ frontend = FrontendStack(app, f"{cfg['prefix']}-frontend",
     env=env,
 )
 frontend.add_dependency(api)
+
+# ── Backup stack (DynamoDB daily snapshots) ──────────────────────────────
+account = os.environ.get("CDK_DEFAULT_ACCOUNT", "726941381086")
+table_arns = [
+    f"arn:aws:dynamodb:{cfg['region']}:{account}:table/{cfg['prefix']}-sessions",
+    f"arn:aws:dynamodb:{cfg['region']}:{account}:table/{cfg['prefix']}-messages",
+    f"arn:aws:dynamodb:{cfg['region']}:{account}:table/{cfg['prefix']}-jobs",
+]
+backup_stack = BackupStack(app, f"{cfg['prefix']}-backup",
+    prefix=cfg["prefix"],
+    table_arns=table_arns,
+    env=env,
+)
 
 cdk.Tags.of(app).add("Project", "StoryTeller")
 cdk.Tags.of(app).add("Stage", stage)

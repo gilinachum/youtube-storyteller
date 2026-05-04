@@ -43,7 +43,8 @@ class DataStack(Stack):
             partition_key=dynamodb.Attribute(name="job_id", type=dynamodb.AttributeType.STRING),
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
             time_to_live_attribute="ttl",
-            removal_policy=RemovalPolicy.DESTROY,
+            point_in_time_recovery_specification=dynamodb.PointInTimeRecoverySpecification(point_in_time_recovery_enabled=True),
+            removal_policy=RemovalPolicy.DESTROY,  # ephemeral — TTL'd rows, no prod data
         )
 
         # ── Uploads bucket ──────────────────────────────────────────────────
