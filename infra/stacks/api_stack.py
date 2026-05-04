@@ -14,6 +14,8 @@ from aws_cdk import (
     aws_apigateway as apigw,
     aws_cognito as cognito,
     aws_iam as iam,
+    aws_events as events,
+    aws_events_targets as targets,
 )
 from constructs import Construct
 from stacks.data_stack import DataStack
@@ -66,6 +68,7 @@ class ApiStack(Stack):
         ))
         data_stack.sessions_table.grant_read_write_data(lambda_role)
         data_stack.messages_table.grant_read_write_data(lambda_role)
+        data_stack.jobs_table.grant_read_write_data(lambda_role)
         data_stack.uploads_bucket.grant_read_write(lambda_role)
         lambda_role.add_to_policy(iam.PolicyStatement(
             actions=[
@@ -76,13 +79,18 @@ class ApiStack(Stack):
             resources=["*"],
         ))
 
+        # Transcription handler Lambda name (for job_resolver to invoke)
+        transcription_handler_name = f"{prefix}-transcription-handler"
+
         # ── Common Lambda env ────────────────────────────────────────────────
         common_env = {
-            "SESSIONS_TABLE": data_stack.sessions_table.table_name,
-            "MESSAGES_TABLE": data_stack.messages_table.table_name,
-            "UPLOAD_BUCKET":  data_stack.uploads_bucket.bucket_name,
-            "AWS_ACCOUNT_ID": self.account,
-            "POWERTOOLS_SERVICE_NAME": prefix,
+            "SESSIONS_TABLE":            data_stack.sessions_table.table_name,
+            "MESSAGES_TABLE":            data_stack.messages_table.table_name,
+            "UPLOAD_BUCKET":             data_stack.uploads_bucket.bucket_name,
+            "JOBS_TABLE":                data_stack.jobs_table.table_name,
+            "TRANSCRIPTION_HANDLER_FN":  transcription_handler_name,
+            "AWS_ACCOUNT_ID":            self.account,
+            "POWERTOOLS_SERVICE_NAME":   prefix,
         }
 
         # AgentCore Memory ID (set via env var or CDK context)
@@ -108,6 +116,36 @@ class ApiStack(Stack):
         sessions_fn   = _mk_fn("Sessions",   "sessions.handler")
         upload_fn     = _mk_fn("Upload",      "upload.handler")
         transcribe_fn = _mk_fn("Transcribe",  "transcribe.handler")
+
+        # Jobs system
+        jobs_poll_fn = _mk_fn("JobsPoll", "jobs_poll.handler", timeout=10)
+
+        transcription_handler_fn = lambda_.Function(
+            self, "TranscriptionHandlerFn",
+            function_name=transcription_handler_name,
+            runtime=lambda_.Runtime.PYTHON_3_13,
+            architecture=lambda_.Architecture.ARM_64,
+            handler="transcription_handler.handler",
+            code=lambda_.Code.from_asset(os.path.join(PROJECT_ROOT, "api")),
+            timeout=Duration.seconds(300),
+            memory_size=512,
+            role=lambda_role,
+            environment=common_env,
+        )
+
+        job_resolver_fn = _mk_fn("JobResolver", "job_resolver.handler", timeout=60)
+        job_resolver_fn.add_to_role_policy(iam.PolicyStatement(
+            actions=["lambda:InvokeFunction"],
+            resources=[transcription_handler_fn.function_arn],
+        ))
+
+        # EventBridge rule: fire job resolver every minute
+        events.Rule(
+            self, "JobResolverSchedule",
+            rule_name=f"{prefix}-job-resolver",
+            schedule=events.Schedule.rate(Duration.minutes(1)),
+            targets=[targets.LambdaFunction(job_resolver_fn)],
+        )
 
         # ── Cognito User Pool (dev auth) ────────────────────────────────────
         authorizer = None
@@ -186,19 +224,10 @@ class ApiStack(Stack):
         job_res = transcribe_res.add_resource("{job_name}")
         job_res.add_method("GET", apigw.LambdaIntegration(transcribe_fn), **default_auth)
 
-        # ── Chat (async Lambda pattern — used when no AgentCore Runtime) ──
-        chat_fn = _mk_fn("Chat", "chat.handler", timeout=900, memory=512)
-        chat_fn.add_environment("JOBS_TABLE", data_stack.jobs_table.table_name)
-        data_stack.jobs_table.grant_read_write_data(lambda_role)
-        # Self-invocation for async pattern (broad grant to avoid circular dep)
-        lambda_role.add_to_policy(iam.PolicyStatement(
-            actions=["lambda:InvokeFunction"],
-            resources=[f"arn:aws:lambda:{self.region}:{self.account}:function:{prefix}-chat"],
-        ))
-        chat_res = api.root.add_resource("chat")
-        chat_res.add_method("POST", apigw.LambdaIntegration(chat_fn), **default_auth)
-        chat_job_res = chat_res.add_resource("{job_id}")
-        chat_job_res.add_method("GET", apigw.LambdaIntegration(chat_fn), **default_auth)
+        # /jobs/poll — lightweight job status polling endpoint
+        jobs_res = api.root.add_resource("jobs")
+        jobs_poll_res = jobs_res.add_resource("poll")
+        jobs_poll_res.add_method("GET", apigw.LambdaIntegration(jobs_poll_fn), **default_auth)
 
         # ── AgentCore Runtime streaming (only if runtime ID provided) ─────
         RUNTIME_ID = self.node.try_get_context("agentRuntimeId") or os.environ.get("AGENT_RUNTIME_ID", "")
