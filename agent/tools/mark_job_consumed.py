@@ -36,7 +36,8 @@ def make_mark_job_consumed_tool(session_id: str, email: str = ""):
             table = dynamodb.Table(JOBS_TABLE)
             table.update_item(
                 Key={"session_id": session_id, "job_id": job_id},
-                UpdateExpression="SET consumed = :true, updated_at = :now",
+                UpdateExpression="SET #c = :true, updated_at = :now",
+                ExpressionAttributeNames={"#c": "consumed"},
                 ExpressionAttributeValues={
                     ":true": True,
                     ":now": now,
