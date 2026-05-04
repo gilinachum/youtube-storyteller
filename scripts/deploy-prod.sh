@@ -92,6 +92,7 @@ uv run agentcore deploy --agent "$AGENT_NAME" \
   --env BEDROCK_MODEL_ID="$BEDROCK_MODEL_ID" \
   --env BEDROCK_REGION="$REGION" \
   --env AGENTCORE_MEMORY_ID="${AGENTCORE_MEMORY_ID:-}" \
+  --env JOBS_TABLE="${JOBS_TABLE:-storyteller-jobs}" \
   --env DEPLOY_TS="$DEPLOY_TS" \
   -auc
 
@@ -105,7 +106,7 @@ aws bedrock-agentcore-control update-agent-runtime \
   --agent-runtime-artifact "{\"codeConfiguration\":{\"code\":{\"s3\":{\"bucket\":\"$S3_BUCKET\",\"prefix\":\"$AGENT_NAME/deployment.zip\"}},\"runtime\":\"PYTHON_3_13\",\"entryPoint\":[\"opentelemetry-instrument\",\"agent/runtime_app.py\"]}}" \
   --authorizer-configuration "{\"customJWTAuthorizer\":{\"discoveryUrl\":\"$FEDERATE_DISCOVERY_URL\",\"allowedAudience\":[\"$FEDERATE_AUDIENCE\"]}}" \
   --request-header-configuration '{"requestHeaderAllowlist":["Authorization"]}' \
-  --environment-variables "{\"MESSAGES_TABLE\":\"$MESSAGES_TABLE\",\"SESSIONS_TABLE\":\"$SESSIONS_TABLE\",\"UPLOAD_BUCKET\":\"$UPLOAD_BUCKET\",\"AGENTCORE_MEMORY_ID\":\"${AGENTCORE_MEMORY_ID:-}\"}" \
+  --environment-variables "{\"MESSAGES_TABLE\":\"$MESSAGES_TABLE\",\"SESSIONS_TABLE\":\"$SESSIONS_TABLE\",\"UPLOAD_BUCKET\":\"$UPLOAD_BUCKET\",\"AGENTCORE_MEMORY_ID\":\"${AGENTCORE_MEMORY_ID:-}\",\"JOBS_TABLE\":\"${JOBS_TABLE:-storyteller-jobs}\"}" \
   --output text --query "status"
 
 echo "⏳ Waiting for runtime to be READY..."
