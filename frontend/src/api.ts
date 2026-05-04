@@ -218,6 +218,18 @@ export async function streamChat(opts: StreamChatOptions): Promise<void> {
   }
 }
 
+export async function pollJobs(
+  sessionId: string
+): Promise<{ has_pending: boolean; has_unconsumed: boolean }> {
+  const headers = await authHeaders()
+  const res = await fetch(
+    `${API_BASE}/jobs/poll?session_id=${encodeURIComponent(sessionId)}`,
+    { headers }
+  )
+  if (!res.ok) throw new Error(`Poll failed (${res.status})`)
+  return res.json()
+}
+
 export async function transcribeAudio(audioBlob: Blob, sessionId: string): Promise<{ text: string; language: string }> {
   const buffer = await audioBlob.arrayBuffer()
   const bytes  = new Uint8Array(buffer)
