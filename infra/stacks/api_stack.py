@@ -134,9 +134,11 @@ class ApiStack(Stack):
         )
 
         job_resolver_fn = _mk_fn("JobResolver", "job_resolver.handler", timeout=60)
-        job_resolver_fn.add_to_role_policy(iam.PolicyStatement(
+        # Grant invoke on transcription handler — use hardcoded ARN to avoid
+        # circular dependency (both functions share lambda_role)
+        lambda_role.add_to_policy(iam.PolicyStatement(
             actions=["lambda:InvokeFunction"],
-            resources=[transcription_handler_fn.function_arn],
+            resources=[f"arn:aws:lambda:{self.region}:{self.account}:function:{transcription_handler_name}"],
         ))
 
         # EventBridge rule: fire job resolver every minute
