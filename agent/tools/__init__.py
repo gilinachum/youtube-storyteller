@@ -9,6 +9,9 @@ from .generate_thumbnail import make_generate_thumbnail_tool
 from .save_user_photo import make_save_user_photo_tool
 from .list_style_templates import list_style_templates
 from .list_user_photos import make_list_user_photos_tool
+from .start_transcription import make_start_transcription_tool
+from .list_pending_jobs import make_list_pending_jobs_tool
+from .mark_job_consumed import make_mark_job_consumed_tool
 
 __all__ = [
     "content_fetch",
@@ -20,4 +23,7 @@ __all__ = [
     "make_save_user_photo_tool",
     "list_style_templates",
     "make_list_user_photos_tool",
+    "make_start_transcription_tool",
+    "make_list_pending_jobs_tool",
+    "make_mark_job_consumed_tool",
 ]

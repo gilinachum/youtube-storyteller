@@ -18,10 +18,16 @@ s3 = boto3.client("s3")
 dynamodb = boto3.resource("dynamodb")
 
 ALLOWED_EXTENSIONS = {
+    # Documents
     ".pdf", ".pptx", ".ppt", ".txt", ".md", ".doc", ".docx",
+    # Images
     ".jpg", ".jpeg", ".png", ".webp", ".gif",
+    # Audio
+    ".mp3", ".m4a", ".wav", ".flac", ".ogg", ".aac", ".wma",
+    # Video
+    ".mp4", ".webm", ".mov", ".avi", ".mkv", ".m4v",
 }
-MAX_SIZE_MB = 50
+MAX_SIZE_MB = 2000
 
 
 def handler(event, context):

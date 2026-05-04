@@ -18,6 +18,7 @@ AI-powered assistant for planning engaging Hebrew YouTube videos. Built with **S
 | [docs/PRODUCT.md](docs/PRODUCT.md) | What StoryTeller does, user flow, design principles |
 | [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) | All functional requirements (current + planned) |
 | [docs/TECHNICAL-DESIGN.md](docs/TECHNICAL-DESIGN.md) | Architecture, data model, sub-agents, streaming |
+| [docs/LONG-RUNNING-JOBS.md](docs/LONG-RUNNING-JOBS.md) | Generic jobs system for async work (transcription, video analysis) — three-Lambda architecture with frontend polling |
 
 ## Architecture
 

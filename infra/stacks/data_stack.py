@@ -36,15 +36,23 @@ class DataStack(Stack):
             removal_policy=RemovalPolicy.RETAIN,
         )
 
-        # ── Jobs table (async chat results) ────────────────────────────────
+        # ── Jobs table (long-running async jobs — transcription, analysis, etc.) ──
         self.jobs_table = dynamodb.Table(
             self, "JobsTable",
             table_name=f"{prefix}-jobs",
-            partition_key=dynamodb.Attribute(name="job_id", type=dynamodb.AttributeType.STRING),
+            partition_key=dynamodb.Attribute(name="session_id", type=dynamodb.AttributeType.STRING),
+            sort_key=dynamodb.Attribute(name="job_id", type=dynamodb.AttributeType.STRING),
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
             time_to_live_attribute="ttl",
             point_in_time_recovery_specification=dynamodb.PointInTimeRecoverySpecification(point_in_time_recovery_enabled=True),
             removal_policy=RemovalPolicy.DESTROY,  # ephemeral — TTL'd rows, no prod data
+        )
+        # GSI: query all jobs by status (used by Job Resolver to find started jobs)
+        self.jobs_table.add_global_secondary_index(
+            index_name="status-index",
+            partition_key=dynamodb.Attribute(name="status", type=dynamodb.AttributeType.STRING),
+            sort_key=dynamodb.Attribute(name="created_at", type=dynamodb.AttributeType.STRING),
+            projection_type=dynamodb.ProjectionType.ALL,
         )
 
         # ── Uploads bucket ──────────────────────────────────────────────────
@@ -58,7 +66,7 @@ class DataStack(Stack):
                 s3.LifecycleRule(
                     id="expire-uploads",
                     enabled=True,
-                    expiration=Duration.days(30),
+                    expiration=Duration.days(365),  # keep uploads/transcripts for 1 year
                 )
             ],
             cors=[

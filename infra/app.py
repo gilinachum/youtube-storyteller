@@ -24,6 +24,7 @@ CONFIG = {
     "prod": {
         "region": "us-east-1",
         "prefix": "storyteller",
+        "stack_prefix": "StoryTeller",  # match existing CFN stack names
         "auth_mode": "none",  # prod overlay replaces this file with federate auth
     },
 }
@@ -37,19 +38,21 @@ env = cdk.Environment(
     region=cfg["region"],  # stage controls region, not env var
 )
 
-data = DataStack(app, f"{cfg['prefix']}-data",
+sp = cfg.get('stack_prefix', cfg['prefix'])
+
+data = DataStack(app, f"{sp}Data" if sp[0].isupper() else f"{cfg['prefix']}-data",
     prefix=cfg["prefix"],
     env=env,
 )
 
-api = ApiStack(app, f"{cfg['prefix']}-api",
+api = ApiStack(app, f"{sp}Api" if sp[0].isupper() else f"{cfg['prefix']}-api",
     data_stack=data,
     auth_mode=cfg["auth_mode"],
     prefix=cfg["prefix"],
     env=env,
 )
 
-frontend = FrontendStack(app, f"{cfg['prefix']}-frontend",
+frontend = FrontendStack(app, f"{sp}Frontend" if sp[0].isupper() else f"{cfg['prefix']}-frontend",
     uploads_bucket_arn=data.uploads_bucket.bucket_arn,
     api=api.api,
     prefix=cfg["prefix"],

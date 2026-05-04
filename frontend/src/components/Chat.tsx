@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { streamChat, listSessions, getSessionMessages, uploadFile, shareSession, getFileDownloadUrl, transcribeAudio, deleteSession } from '../api'
+import { useJobPolling } from '../hooks/useJobPolling'
 import type { Session, FileRecord } from '../api'
 import ChatMessages from './ChatMessages'
 import ChatInput from './ChatInput'
@@ -59,6 +60,10 @@ export default function Chat({ email, onLogout }: Props) {
   const [sharedWith, setSharedWith] = useState<string[]>([])
   const [isSharedSession, setIsSharedSession] = useState(false)
   const abortControllerRef = useRef<AbortController | null>(null)
+  // Stable ref so handleSend's onDone closure can call checkNow without stale captures
+  const checkNowRef = useRef<() => Promise<void>>(() => Promise.resolve())
+  // Stable ref so handleJobsReady can call handleSend without circular hook deps
+  const handleSendRef = useRef<(text: string, files?: UploadedFile[]) => Promise<void>>(() => Promise.resolve())
 
   // Persist current session ID
   useEffect(() => {
@@ -194,6 +199,8 @@ export default function Chat({ email, onLogout }: Props) {
         // Refresh sessions (immediate + delayed to catch name_session updates)
         listSessions().then(setSessions).catch(console.error)
         setTimeout(() => listSessions().then(setSessions).catch(console.error), 2000)
+        // Check for completed long-running jobs after every agent response
+        checkNowRef.current()
       },
       onError: async (err) => {
         abortControllerRef.current = null
@@ -256,6 +263,23 @@ export default function Chat({ email, onLogout }: Props) {
       },
     })
   }, [email, currentSessionId])
+
+  // ── Job polling ────────────────────────────────────────────────────────────
+  const handleJobsReady = useCallback(() => {
+    // Don't interrupt an in-flight request; jobs stay unconsumed so next 60s tick will retry.
+    if (loading) return
+    handleSendRef.current('יש עבודות שהסתיימו, בדוק בבקשה')
+  }, [loading])
+
+  const { hasPending, checkNow } = useJobPolling({
+    sessionId: currentSessionId,
+    enabled: true,
+    onJobsReady: handleJobsReady,
+  })
+
+  // Keep refs current to break circular dependencies
+  useEffect(() => { checkNowRef.current = checkNow }, [checkNow])
+  useEffect(() => { handleSendRef.current = handleSend }, [handleSend])
 
   const handleNewChat = useCallback(() => {
     // Abort any in-flight stream
@@ -411,6 +435,12 @@ export default function Chat({ email, onLogout }: Props) {
           <div className="flex-1">
             <div className="flex items-center gap-2">
               <h1 className="font-semibold text-white">StoryTeller</h1>
+              {hasPending && (
+                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-900/40 text-amber-400 text-xs animate-pulse">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                  מעבד...
+                </span>
+              )}
               {(isSharedSession || sharedWith.length > 0) && (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-brand-900/50 text-brand-300 text-xs">
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-3 h-3">

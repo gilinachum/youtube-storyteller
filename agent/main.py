@@ -24,6 +24,9 @@ from agent.tools import (
 from agent.tools.session_manager import make_name_session_tool
 from agent.tools.export_document import make_export_document_tool
 from agent.tools.save_user_photo import make_save_user_photo_tool
+from agent.tools.start_transcription import make_start_transcription_tool
+from agent.tools.list_pending_jobs import make_list_pending_jobs_tool
+from agent.tools.mark_job_consumed import make_mark_job_consumed_tool
 from agent.research_agent import create_research_agent
 from agent.thumbnail_agent import create_thumbnail_agent
 
@@ -55,6 +58,9 @@ def create_agent(email: str = "", session_id: str = "") -> Agent:
     name_session = make_name_session_tool(email, session_id)
     export_document = make_export_document_tool(email, session_id)
     save_user_photo = make_save_user_photo_tool(email)
+    start_transcription = make_start_transcription_tool(email, session_id)
+    list_pending_jobs = make_list_pending_jobs_tool(email, session_id)
+    mark_job_consumed = make_mark_job_consumed_tool(session_id)
 
     # Create research sub-agent as a tool
     research_agent = create_research_agent()
@@ -114,6 +120,9 @@ def create_agent(email: str = "", session_id: str = "") -> Agent:
             name_session,
             export_document,
             save_user_photo,
+            start_transcription,
+            list_pending_jobs,
+            mark_job_consumed,
             research_tool,
             thumbnail_tool,
         ],

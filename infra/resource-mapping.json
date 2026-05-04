@@ -1,0 +1,14 @@
+{
+  "SessionsTable7C302024": {
+    "TableName": "storyteller-sessions"
+  },
+  "MessagesTable05B58A27": {
+    "TableName": "storyteller-messages"
+  },
+  "JobsTable1970BC16": {
+    "TableName": "storyteller-jobs"
+  },
+  "UploadsBucket5E5E9B64": {
+    "BucketName": "storytellerdata-uploadsbucket5e5e9b64-ysokbp7rrbw5"
+  }
+}
