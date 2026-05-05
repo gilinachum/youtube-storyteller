@@ -92,12 +92,18 @@ if [[ -n "$AGENT_RUNTIME_ID" ]]; then
     --env DEPLOY_TS="$DEPLOY_TS" \
     -auc
 
-  # ── Restore Federate JWT authorizer (prod only, deploy resets it) ────────
+  # ── Restore JWT authorizer (deploy resets it) ─────────────────────────────
   if [[ "$STAGE" == "prod" ]]; then
-    FEDERATE_DISCOVERY_URL="${FEDERATE_DISCOVERY_URL:-https://idp.federate.amazon.com/.well-known/openid-configuration}"
-    FEDERATE_AUDIENCE="${FEDERATE_AUDIENCE:-storyteller-cognito}"
+    JWT_DISCOVERY_URL="${FEDERATE_DISCOVERY_URL:-https://idp.federate.amazon.com/.well-known/openid-configuration}"
+    JWT_AUDIENCE="${FEDERATE_AUDIENCE:-storyteller-cognito}"
+  elif [[ "$STAGE" == "dev" ]]; then
+    JWT_DISCOVERY_URL="${COGNITO_DISCOVERY_URL:-}"
+    JWT_AUDIENCE="${COGNITO_AUDIENCE:-}"
+  fi
+
+  if [[ -n "$JWT_DISCOVERY_URL" && -n "$JWT_AUDIENCE" ]]; then
     echo ""
-    echo "🔐 Restoring Federate JWT authorizer on AgentCore..."
+    echo "🔐 Restoring JWT authorizer on AgentCore ($STAGE)..."
     uv run python3 << PYEOF
 import boto3
 client = boto3.client("bedrock-agentcore-control", region_name="${REGION}")
@@ -110,12 +116,12 @@ client.update_agent_runtime(
     environmentVariables={**current.get("environmentVariables", {}), "DEPLOY_TS": "${DEPLOY_TS}"},
     authorizerConfiguration={
         "customJWTAuthorizer": {
-            "discoveryUrl": "${FEDERATE_DISCOVERY_URL}",
-            "allowedAudience": ["${FEDERATE_AUDIENCE}"]
+            "discoveryUrl": "${JWT_DISCOVERY_URL}",
+            "allowedAudience": ["${JWT_AUDIENCE}"]
         }
     }
 )
-print("✅ Federate JWT auth restored")
+print("✅ JWT auth restored (${STAGE})")
 PYEOF
   fi
 else
@@ -132,6 +138,13 @@ if [[ -n "$DISTRIBUTION_ID" ]]; then
     --distribution-id "$DISTRIBUTION_ID" \
     --paths "/*" \
     --query 'Invalidation.Id' --output text
+fi
+
+# ── CFS protection (prod only) ───────────────────────────────────────────────
+if [[ "$STAGE" == "prod" && -f "$PROJECT_DIR/private/infra-private/setup_midway.py" ]]; then
+  echo ""
+  echo "🛡️  Applying CFS protection..."
+  uv run python3 "$PROJECT_DIR/private/infra-private/setup_midway.py"
 fi
 
 echo ""

@@ -348,7 +348,7 @@ class ApiStack(Stack):
                 proxy=True,
                 options=apigw.IntegrationOptions(
                     connection_type=apigw.ConnectionType.INTERNET,
-                    timeout=Duration.minutes(15) if auth_mode == "federate" else Duration.seconds(29),
+                    timeout=Duration.minutes(15),  # STREAM mode supports up to 15min
                     request_parameters=request_params,
                 ),
             )
