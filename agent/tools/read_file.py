@@ -18,10 +18,15 @@ def make_read_file_tool(session_id: str, email: str):
 
     @tool
     def read_file(s3_key: str) -> str:
-        """Read the contents of a text file from session storage.
+        """Read the contents of a text file from session storage into your context.
 
-        Use this to read transcription results, notes, or any text file that was
-        uploaded or generated for the current session.
+        Use this to INGEST transcription results so you can reference them when
+        planning videos. Call this once per file — the content stays in your
+        conversation context for subsequent turns.
+
+        Do NOT paste the full file content back to the user in chat — just
+        summarize the key points. The file is already available for download
+        in the session's file list.
 
         The s3_key is available from:
         - Job results (result.s3_key from list_pending_jobs)
