@@ -27,6 +27,7 @@ from agent.tools.save_user_photo import make_save_user_photo_tool
 from agent.tools.start_transcription import make_start_transcription_tool
 from agent.tools.list_pending_jobs import make_list_pending_jobs_tool
 from agent.tools.mark_job_consumed import make_mark_job_consumed_tool
+from agent.tools.read_file import make_read_file_tool
 from agent.research_agent import create_research_agent
 from agent.thumbnail_agent import create_thumbnail_agent
 
@@ -61,6 +62,7 @@ def create_agent(email: str = "", session_id: str = "") -> Agent:
     start_transcription = make_start_transcription_tool(email, session_id)
     list_pending_jobs = make_list_pending_jobs_tool(email, session_id)
     mark_job_consumed = make_mark_job_consumed_tool(session_id)
+    read_file = make_read_file_tool(session_id, email)
 
     # Create research sub-agent as a tool
     research_agent = create_research_agent()
@@ -123,6 +125,7 @@ def create_agent(email: str = "", session_id: str = "") -> Agent:
             start_transcription,
             list_pending_jobs,
             mark_job_consumed,
+            read_file,
             research_tool,
             thumbnail_tool,
         ],
