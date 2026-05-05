@@ -46,11 +46,13 @@ def email_to_actor_id(email: str) -> str:
 
 def create_agent(email: str = "", session_id: str = "") -> Agent:
     """Create and configure the StoryTeller agent."""
+    from botocore.config import Config as BotoConfig
 
     model = BedrockModel(
         model_id="us.anthropic.claude-sonnet-4-6",
         region_name=os.environ.get("AWS_REGION", "us-west-2"),
         max_tokens=8192,
+        boto_client_config=BotoConfig(read_timeout=300),  # 5 min for long doc generation
     )
 
     system_prompt = build_system_prompt()
