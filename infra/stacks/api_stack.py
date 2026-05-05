@@ -81,6 +81,28 @@ class ApiStack(Stack):
             resources=["*"],
         ))
 
+        # ── AgentCore Runtime Role — app-level permissions ────────────────
+        # The runtime role is created by `agentcore` CLI; we import and attach policy here.
+        runtime_role_arn = self.node.try_get_context("agentcoreRuntimeRoleArn") or os.environ.get("EXECUTION_ROLE", "")
+        if runtime_role_arn:
+            runtime_role = iam.Role.from_role_arn(
+                self, "AgentCoreRuntimeRole", runtime_role_arn, mutable=True
+            )
+            runtime_role.add_to_policy(iam.PolicyStatement(
+                sid="SecretsManagerAccess",
+                actions=["secretsmanager:GetSecretValue"],
+                resources=[
+                    f"arn:aws:secretsmanager:{self.region}:{self.account}:secret:firecrawl/*",
+                    f"arn:aws:secretsmanager:{self.region}:{self.account}:secret:tavily/*",
+                    f"arn:aws:secretsmanager:{self.region}:{self.account}:secret:gcp/*",
+                    f"arn:aws:secretsmanager:{self.region}:{self.account}:secret:storyteller/*",
+                    f"arn:aws:secretsmanager:{self.region}:{self.account}:secret:perplexity/*",
+                ],
+            ))
+            data_stack.uploads_bucket.grant_read_write(runtime_role)
+            data_stack.sessions_table.grant_read_write_data(runtime_role)
+            data_stack.jobs_table.grant_read_write_data(runtime_role)
+
         # Transcription handler Lambda name (for job_resolver to invoke)
         transcription_handler_name = f"{prefix}-transcription-handler"
 

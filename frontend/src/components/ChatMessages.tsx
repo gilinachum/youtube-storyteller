@@ -86,7 +86,7 @@ function UserMessage({ content, email }: { content: string; email?: string }) {
 
   return (
     <div>
-      {cleanText && <p>{cleanText}</p>}
+      {cleanText && <p className="whitespace-pre-wrap">{cleanText}</p>}
       {/* Image previews */}
       {imageFiles.length > 0 && (
         <div className={`flex flex-wrap gap-2 ${cleanText ? 'mt-2' : ''}`}>
