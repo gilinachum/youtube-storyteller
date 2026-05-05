@@ -144,20 +144,23 @@ def _extract_email_from_jwt(context) -> str:
     """Extract email from JWT in the Authorization header.
     
     Requires requestHeaderAllowlist=["Authorization"] on the AgentCore runtime
-    so the header is forwarded to the handler.
+    so the header is forwarded to the handler via context.request_headers.
     """
     try:
         import base64
         
-        # Get headers from the Starlette request object
-        headers = {}
-        request = getattr(context, "request", None)
-        if request and hasattr(request, "headers"):
-            headers = dict(request.headers)
+        # AgentCore SDK passes allowed headers via context.request_headers dict
+        headers = getattr(context, "request_headers", None) or {}
         
-        auth = headers.get("authorization", "")
+        # Fallback: try the Starlette request object
+        if not headers:
+            request = getattr(context, "request", None)
+            if request and hasattr(request, "headers"):
+                headers = dict(request.headers)
+        
+        auth = headers.get("Authorization") or headers.get("authorization") or ""
         if not auth:
-            logger.warning("No Authorization header found")
+            logger.warning("No Authorization header in context.request_headers")
             return ""
         
         token = auth.replace("Bearer ", "") if auth.startswith("Bearer ") else auth

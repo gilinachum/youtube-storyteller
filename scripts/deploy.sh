@@ -103,7 +103,7 @@ if [[ -n "$AGENT_RUNTIME_ID" ]]; then
 
   if [[ -n "$JWT_DISCOVERY_URL" && -n "$JWT_AUDIENCE" ]]; then
     echo ""
-    echo "🔐 Restoring JWT authorizer on AgentCore ($STAGE)..."
+    echo "🔐 Restoring JWT authorizer + header allowlist on AgentCore ($STAGE)..."
     uv run python3 << PYEOF
 import boto3
 client = boto3.client("bedrock-agentcore-control", region_name="${REGION}")
@@ -119,9 +119,12 @@ client.update_agent_runtime(
             "discoveryUrl": "${JWT_DISCOVERY_URL}",
             "allowedAudience": ["${JWT_AUDIENCE}"]
         }
-    }
+    },
+    requestHeaderConfiguration={
+        "requestHeaderAllowlist": ["Authorization"]
+    },
 )
-print("✅ JWT auth restored (${STAGE})")
+print("✅ JWT auth + header allowlist restored (${STAGE})")
 PYEOF
   fi
 else

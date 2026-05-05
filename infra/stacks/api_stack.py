@@ -335,12 +335,12 @@ class ApiStack(Stack):
                 f"?qualifier=DEFAULT&accountId={self.account}"
             )
 
-            # For federate mode, pass Authorization through to AgentCore
+            # Always forward Authorization header to AgentCore Runtime
+            # (so the agent can extract email from the JWT)
             request_params = {
                 "integration.request.header.Content-Type": "'application/json'",
+                "integration.request.header.Authorization": "method.request.header.Authorization",
             }
-            if auth_mode == "federate":
-                request_params["integration.request.header.Authorization"] = "method.request.header.Authorization"
 
             runtime_integration = apigw.HttpIntegration(
                 RUNTIME_ENDPOINT,
@@ -370,6 +370,7 @@ class ApiStack(Stack):
                     "POST",
                     runtime_integration,
                     **default_auth,
+                    request_parameters={"method.request.header.Authorization": True},
                 )
             else:
                 # No auth
