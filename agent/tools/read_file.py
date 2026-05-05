@@ -71,11 +71,26 @@ def make_read_file_tool(session_id: str, email: str):
             if truncated:
                 text = text[:MAX_CHARS]
 
+            # Generate a presigned download URL (1 hour expiry)
+            try:
+                download_url = s3.generate_presigned_url(
+                    "get_object",
+                    Params={
+                        "Bucket": UPLOAD_BUCKET,
+                        "Key": s3_key,
+                        "ResponseContentDisposition": f'attachment; filename="{s3_key.split("/")[-1]}"',
+                    },
+                    ExpiresIn=3600,
+                )
+            except Exception:
+                download_url = None
+
             return json.dumps({
                 "content": text,
                 "filename": s3_key.split("/")[-1],
                 "size": len(body),
                 "truncated": truncated,
+                "download_url": download_url,
             }, ensure_ascii=False)
 
         except s3.exceptions.NoSuchKey:

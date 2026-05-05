@@ -1,0 +1,27 @@
+{
+  "StoryTellerData": {
+    "ExportsOutputFnGetAttSessionsTable7C302024Arn24FF8012": "arn:aws:dynamodb:us-east-1:726941381086:table/storyteller-sessions",
+    "ExportsOutputRefSessionsTable7C3020246E1CCFDD": "storyteller-sessions",
+    "ExportsOutputRefMessagesTable05B58A27CCC43D33": "storyteller-messages",
+    "ExportsOutputFnGetAttUploadsBucket5E5E9B64Arn8603C131": "arn:aws:s3:::storytellerdata-uploadsbucket5e5e9b64-ysokbp7rrbw5",
+    "UploadsBucketName": "storytellerdata-uploadsbucket5e5e9b64-ysokbp7rrbw5",
+    "ExportsOutputFnGetAttMessagesTable05B58A27Arn05106AA2": "arn:aws:dynamodb:us-east-1:726941381086:table/storyteller-messages",
+    "ExportsOutputRefUploadsBucket5E5E9B64F2F56CC2": "storytellerdata-uploadsbucket5e5e9b64-ysokbp7rrbw5",
+    "JobsTableName": "storyteller-jobs",
+    "MessagesTableName": "storyteller-messages",
+    "SessionsTableName": "storyteller-sessions"
+  },
+  "StoryTellerApi": {
+    "StoryTellerApiEndpointDB3DE813": "https://c1p7y5p1di.execute-api.us-east-1.amazonaws.com/prod/",
+    "ExportsOutputRefStoryTellerApi11923F3BB3CBF92E": "c1p7y5p1di",
+    "ApiUrl": "https://c1p7y5p1di.execute-api.us-east-1.amazonaws.com/prod/",
+    "StreamEndpoint": "https://c1p7y5p1di.execute-api.us-east-1.amazonaws.com/prod/chat-stream",
+    "RestApiId": "c1p7y5p1di",
+    "ExportsOutputRefStoryTellerApiDeploymentStageprodC8A681480ECE394C": "prod"
+  },
+  "StoryTellerFrontend": {
+    "CloudFrontUrl": "https://d1odwixjhlwcc4.cloudfront.net",
+    "BucketName": "storytellerfrontend-frontendbucketefe2e19c-2xcqq8rxb684",
+    "DistributionId": "E3N20PMMKJIPK0"
+  }
+}
