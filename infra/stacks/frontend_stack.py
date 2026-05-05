@@ -7,6 +7,7 @@ TrustedKeyGroups to these behaviors after the stack is deployed.
 The /error/* and /js/cfs-handler.js behaviors stay unrestricted (that's
 what serves the CFS auth page itself).
 """
+from __future__ import annotations
 import os
 import aws_cdk as cdk
 from aws_cdk import (
@@ -27,7 +28,7 @@ FRONTEND_DIST = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", 
 class FrontendStack(Stack):
     def __init__(self, scope: Construct, id: str,
                  uploads_bucket_arn: str = "",
-                 api = None,  # type: Optional[apigw.RestApi]
+                 api: apigw.RestApi | None = None,
                  prefix: str = "storyteller",
                  **kwargs):
         super().__init__(scope, id, **kwargs)

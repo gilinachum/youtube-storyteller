@@ -1,30 +1,9 @@
-// API client — supports both local (email in query) and Cognito (JWT) auth.
-//
-// In Cognito mode, the ID token is sent as an Authorization header and the
-// API Gateway Cognito authorizer validates it. The email comes from the token.
+// Unified API client — uses getToken() from ./auth for both Cognito and Federate modes.
+// The authorizer (Cognito or Lambda) extracts email from the JWT — no email in query/body.
 
 const API_BASE = '/api'
 
-import { getAuth, getAuthHeader, AUTH_MODE } from './auth'
-
-function email(): string {
-  return getAuth()?.email || ''
-}
-
-/** Build headers with optional Authorization for Cognito mode. */
-async function authHeaders(extra: Record<string, string> = {}): Promise<Record<string, string>> {
-  const headers: Record<string, string> = { ...extra }
-  const token = await getAuthHeader()
-  if (token) headers['Authorization'] = `Bearer ${token}`
-  return headers
-}
-
-/** Build URL with email param for local mode, plain URL for Cognito. */
-function withEmail(url: string): string {
-  if (AUTH_MODE === 'cognito') return url
-  const sep = url.includes('?') ? '&' : '?'
-  return `${url}${sep}email=${encodeURIComponent(email())}`
-}
+import { getToken } from './auth'
 
 export interface Session {
   email: string
@@ -58,9 +37,17 @@ export interface FileRecord {
   uploaded_at: string
 }
 
+/** Build headers with Authorization Bearer token. */
+async function authHeaders(extra: Record<string, string> = {}): Promise<Record<string, string>> {
+  const headers: Record<string, string> = { ...extra }
+  const token = await getToken()
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  return headers
+}
+
 export async function listSessions(): Promise<Session[]> {
   const headers = await authHeaders()
-  const res = await fetch(withEmail(`${API_BASE}/sessions`), { headers })
+  const res = await fetch(`${API_BASE}/sessions`, { headers })
   const data = await res.json()
   if (!res.ok) throw new Error(data.error || 'Failed to load sessions')
   return data.sessions || []
@@ -68,7 +55,7 @@ export async function listSessions(): Promise<Session[]> {
 
 export async function deleteSession(sessionId: string): Promise<void> {
   const headers = await authHeaders()
-  const res = await fetch(withEmail(`${API_BASE}/sessions/${sessionId}`), {
+  const res = await fetch(`${API_BASE}/sessions/${sessionId}`, {
     method: 'DELETE', headers,
   })
   const data = await res.json()
@@ -77,22 +64,21 @@ export async function deleteSession(sessionId: string): Promise<void> {
 
 export async function getSessionMessages(sessionId: string): Promise<{ messages: Message[]; files: FileRecord[]; shared_with: string[] }> {
   const headers = await authHeaders()
-  const res = await fetch(withEmail(`${API_BASE}/sessions/${sessionId}`), { headers })
+  const res = await fetch(`${API_BASE}/sessions/${sessionId}`, { headers })
   const data = await res.json()
   if (!res.ok) throw new Error(data.error || 'Failed to load session')
   return {
-    messages:    data.messages    || [],
-    files:       data.files       || [],
+    messages: data.messages || [],
+    files: data.files || [],
     shared_with: data.shared_with || [],
   }
 }
 
 export async function shareSession(sessionId: string, shareWith: string): Promise<void> {
   const headers = await authHeaders({ 'Content-Type': 'application/json' })
-  const body: Record<string, string> = { share_with: shareWith }
-  if (AUTH_MODE === 'local') body.email = email()
   const res = await fetch(`${API_BASE}/sessions/${sessionId}/share`, {
-    method: 'POST', headers, body: JSON.stringify(body),
+    method: 'POST', headers,
+    body: JSON.stringify({ share_with: shareWith }),
   })
   const data = await res.json()
   if (!res.ok) throw new Error(data.error || 'Share failed')
@@ -100,7 +86,7 @@ export async function shareSession(sessionId: string, shareWith: string): Promis
 
 export async function getFileDownloadUrl(sessionId: string, fileId: string): Promise<string> {
   const headers = await authHeaders()
-  const res = await fetch(withEmail(`${API_BASE}/sessions/${sessionId}/files/${fileId}`), { headers })
+  const res = await fetch(`${API_BASE}/sessions/${sessionId}/files/${fileId}`, { headers })
   const data = await res.json()
   if (!res.ok) throw new Error(data.error || 'Download failed')
   return data.download_url
@@ -110,17 +96,18 @@ export async function requestUploadUrl(
   sessionId: string, filename: string, contentType: string
 ): Promise<UploadResponse> {
   const headers = await authHeaders({ 'Content-Type': 'application/json' })
-  const body: Record<string, string> = { session_id: sessionId, filename, content_type: contentType }
-  if (AUTH_MODE === 'local') body.email = email()
   const res = await fetch(`${API_BASE}/upload`, {
-    method: 'POST', headers, body: JSON.stringify(body),
+    method: 'POST', headers,
+    body: JSON.stringify({ session_id: sessionId, filename, content_type: contentType }),
   })
   const data = await res.json()
   if (!res.ok) throw new Error(data.error || 'Upload request failed')
   return data
 }
 
-export async function uploadFile(sessionId: string, file: File): Promise<{ key: string; filename: string; file_id: string }> {
+export async function uploadFile(
+  sessionId: string, file: File
+): Promise<{ key: string; filename: string; file_id: string }> {
   const { upload_url, key, file_id } = await requestUploadUrl(
     sessionId, file.name, file.type || 'application/octet-stream'
   )
@@ -146,77 +133,52 @@ export interface StreamChatOptions {
 }
 
 export async function streamChat(opts: StreamChatOptions): Promise<void> {
-  const { email, message, sessionId, fileRefs, onChunk, onDone, onError, signal } = opts
+  const { message, sessionId, fileRefs, onChunk, onDone, onError, signal } = opts
 
   try {
     const headers = await authHeaders({ 'Content-Type': 'application/json' })
-    const body: Record<string, unknown> = {
-      message,
-      session_id: sessionId,
-      file_refs: fileRefs || [],
-    }
-    if (AUTH_MODE === 'local') body.email = email
-
-    // Try streaming endpoint first (AgentCore Runtime in prod)
-    const streamRes = await fetch(`${API_BASE}/chat-stream`, {
+    const res = await fetch(`${API_BASE}/chat-stream`, {
       method: 'POST', headers,
-      body: JSON.stringify(body),
+      body: JSON.stringify({
+        message,
+        session_id: sessionId,
+        file_refs: fileRefs || [],
+      }),
       signal,
     })
 
-    if (streamRes.ok && streamRes.body) {
-      const reader = streamRes.body.getReader()
-      const decoder = new TextDecoder()
-      let fullText = ''
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        const chunk = decoder.decode(value, { stream: true })
-        fullText += chunk
-        onChunk(chunk)
-      }
-      const remaining = decoder.decode()
-      if (remaining) { fullText += remaining; onChunk(remaining) }
-      onDone(fullText)
-      return
+    if (!res.ok) {
+      const errBody = await res.text()
+      throw new Error(`Stream request failed (${res.status}): ${errBody}`)
+    }
+    if (!res.body) {
+      throw new Error('No response body — streaming not supported')
     }
 
-    // Fallback: async chat Lambda (POST /chat → poll /chat/{job_id})
-    const chatRes = await fetch(`${API_BASE}/chat`, {
-      method: 'POST', headers,
-      body: JSON.stringify(body),
-      signal,
-    })
-    if (!chatRes.ok) {
-      const errBody = await chatRes.text()
-      throw new Error(`Chat request failed (${chatRes.status}): ${errBody}`)
-    }
-    const { job_id } = await chatRes.json()
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let fullText = ''
 
-    // Poll for result
-    const pollHeaders = await authHeaders()
-    for (let i = 0; i < 120; i++) {
-      if (signal?.aborted) return
-      await new Promise(r => setTimeout(r, 2000))
-      const pollRes = await fetch(`${API_BASE}/chat/${job_id}`, { headers: pollHeaders, signal })
-      if (!pollRes.ok) continue
-      const result = await pollRes.json()
-      if (result.status === 'done') {
-        const text = result.response || ''
-        onChunk(text)
-        onDone(text)
-        return
-      }
-      if (result.status === 'error') {
-        throw new Error(result.error || 'Agent error')
-      }
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      const chunk = decoder.decode(value, { stream: true })
+      fullText += chunk
+      onChunk(chunk)
     }
-    throw new Error('Chat timed out after 4 minutes')
+    const remaining = decoder.decode()
+    if (remaining) {
+      fullText += remaining
+      onChunk(remaining)
+    }
+    onDone(fullText)
   } catch (err: unknown) {
     if (err instanceof Error && err.name === 'AbortError') return
     onError(err instanceof Error ? err : new Error(String(err)))
   }
 }
+
+// ── Jobs polling ───────────────────────────────────────────────────────────
 
 export async function pollJobs(
   sessionId: string
@@ -232,7 +194,7 @@ export async function pollJobs(
 
 export async function transcribeAudio(audioBlob: Blob, sessionId: string): Promise<{ text: string; language: string }> {
   const buffer = await audioBlob.arrayBuffer()
-  const bytes  = new Uint8Array(buffer)
+  const bytes = new Uint8Array(buffer)
   let binary = ''
   const chunkSize = 8192
   for (let i = 0; i < bytes.length; i += chunkSize) {
@@ -241,11 +203,9 @@ export async function transcribeAudio(audioBlob: Blob, sessionId: string): Promi
   const base64 = btoa(binary)
 
   const headers = await authHeaders({ 'Content-Type': 'application/json' })
-  const body: Record<string, string> = { session_id: sessionId, audio: base64 }
-  if (AUTH_MODE === 'local') body.email = email()
-
   const startRes = await fetch(`${API_BASE}/transcribe`, {
-    method: 'POST', headers, body: JSON.stringify(body),
+    method: 'POST', headers,
+    body: JSON.stringify({ session_id: sessionId, audio: base64 }),
   })
 
   if (!startRes.ok) {
@@ -254,15 +214,15 @@ export async function transcribeAudio(audioBlob: Blob, sessionId: string): Promi
   }
   const { job_name } = await startRes.json()
 
-  const pollHeaders = await authHeaders()
   const maxAttempts = 60
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise(r => setTimeout(r, 2000))
+    const pollHeaders = await authHeaders()
     const pollRes = await fetch(`${API_BASE}/transcribe/${encodeURIComponent(job_name)}`, { headers: pollHeaders })
     if (!pollRes.ok) continue
     const result = await pollRes.json()
     if (result.status === 'COMPLETED') return { text: result.text, language: result.language }
-    if (result.status === 'FAILED')    throw new Error(result.error || 'Transcription failed')
+    if (result.status === 'FAILED') throw new Error(result.error || 'Transcription failed')
   }
   throw new Error('Transcription timed out')
 }

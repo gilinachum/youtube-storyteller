@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react'
 import Chat from './components/Chat'
-import { getAuthAsync, setAuth, clearAuth, AUTH_MODE, type AuthInfo } from './auth'
+import { AUTH_MODE, getAuthInfo, login, logout, handleCallback, type AuthInfo } from './auth'
 
 export default function App() {
-  const [auth, setAuthState] = useState<AuthInfo | null>(null)
+  const [auth, setAuth] = useState<AuthInfo | null>(null)
   const [loading, setLoading] = useState(true)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -11,10 +11,29 @@ export default function App() {
   const [error, setError] = useState('')
   const [challengeUser, setChallengeUser] = useState<any>(null)
 
+  // Handle /auth/callback (Federate mode)
   useEffect(() => {
-    getAuthAsync()
+    if (AUTH_MODE === 'federate' && window.location.pathname === '/auth/callback') {
+      handleCallback()
+        .then(info => {
+          if (info) {
+            setAuth(info)
+            window.history.replaceState({}, '', '/')
+          }
+          setLoading(false)
+        })
+        .catch(e => {
+          console.error(e)
+          setError(e.message || 'Login failed')
+          setLoading(false)
+        })
+      return
+    }
+
+    // Normal init — check existing auth
+    getAuthInfo()
       .then(info => {
-        setAuthState(info)
+        setAuth(info)
         setLoading(false)
       })
       .catch(err => {
@@ -23,38 +42,39 @@ export default function App() {
       })
   }, [])
 
-  const handleLocalLogin = (e: React.FormEvent) => {
-    e.preventDefault()
-    const trimmed = email.trim()
-    if (!trimmed || !trimmed.includes('@')) return
-    setAuthState(setAuth(trimmed))
-  }
+  // Federate: auto-redirect to IdP if not authenticated
+  useEffect(() => {
+    if (AUTH_MODE !== 'federate') return
+    const inCallback = window.location.pathname === '/auth/callback'
+    if (!auth && !inCallback && !loading && !error) {
+      login() // redirects to Federate, never returns
+    }
+  }, [auth, loading, error])
 
+  // Cognito login handler
   const handleCognitoLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
     try {
-      const { signIn } = await import('./auth-cognito')
-      const result = await signIn(email.trim(), password)
-      if ('newPasswordRequired' in result) {
-        setChallengeUser(result.user)
-      } else {
-        setAuth(result.email, result.name)
-        setAuthState({ email: result.email, name: result.name })
-      }
+      const info = await login(email.trim(), password)
+      setAuth(info)
     } catch (err: any) {
-      setError(err.message || 'Login failed')
+      if (err.message === 'NEW_PASSWORD_REQUIRED') {
+        setChallengeUser(err.user)
+      } else {
+        setError(err.message || 'Login failed')
+      }
     }
   }
 
+  // Cognito new-password challenge
   const handleNewPassword = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
     try {
       const { completeNewPassword } = await import('./auth-cognito')
       const result = await completeNewPassword(challengeUser, newPassword)
-      setAuth(result.email, result.name)
-      setAuthState({ email: result.email, name: result.name })
+      setAuth({ email: result.email, name: result.name })
       setChallengeUser(null)
     } catch (err: any) {
       setError(err.message || 'Password change failed')
@@ -62,25 +82,58 @@ export default function App() {
   }
 
   const handleLogout = () => {
-    clearAuth()
-    setAuthState(null)
+    logout()
+    setAuth(null)
+    if (AUTH_MODE === 'federate') {
+      login() // redirect back to IdP
+    }
   }
 
+  // Loading state
   if (loading) {
     return (
       <div style={containerStyle}>
         <div style={cardStyle}>
-          <p style={{ color: '#94a3b8' }}>Loading...</p>
+          <p style={{ color: '#94a3b8' }}>
+            {AUTH_MODE === 'federate' ? 'Signing you in…' : 'Loading...'}
+          </p>
         </div>
       </div>
     )
   }
 
+  // Federate error
+  if (AUTH_MODE === 'federate' && error) {
+    return (
+      <div style={containerStyle}>
+        <div style={cardStyle}>
+          <h2 style={{ margin: '0 0 12px', fontSize: 18 }}>Login error</h2>
+          <p style={{ color: '#fca5a5', fontSize: 14 }}>{error}</p>
+          <button onClick={() => { setError(''); login() }} style={btnStyle}>
+            Try again
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // Authenticated — render chat
   if (auth) {
     return <Chat email={auth.email} onLogout={handleLogout} />
   }
 
-  // ── New password challenge (first Cognito login) ──────────────────────────
+  // Federate: waiting for redirect (shouldn't see this long)
+  if (AUTH_MODE === 'federate') {
+    return (
+      <div style={containerStyle}>
+        <div style={cardStyle}>
+          <p style={{ color: '#94a3b8' }}>Redirecting to sign in…</p>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Cognito: New password challenge ───────────────────────────────────────
   if (challengeUser) {
     return (
       <div style={containerStyle}>
@@ -105,17 +158,13 @@ export default function App() {
     )
   }
 
-  // ── Login form ────────────────────────────────────────────────────────────
-  const isCognito = AUTH_MODE === 'cognito'
-
+  // ── Cognito: Login form ───────────────────────────────────────────────────
   return (
     <div style={containerStyle}>
-      <form onSubmit={isCognito ? handleCognitoLogin : handleLocalLogin} style={cardStyle}>
+      <form onSubmit={handleCognitoLogin} style={cardStyle}>
         <h1 style={{ margin: '0 0 8px', fontSize: 20 }}>StoryTeller</h1>
         <p style={{ margin: '0 0 24px', color: '#94a3b8', fontSize: 14 }}>
-          {isCognito
-            ? 'Sign in with your credentials.'
-            : 'Enter your email to continue. Sessions are keyed to this address.'}
+          Sign in with your credentials.
         </p>
         {error && <p style={errorStyle}>{error}</p>}
         <input
@@ -127,19 +176,15 @@ export default function App() {
           placeholder="you@example.com"
           style={inputStyle}
         />
-        {isCognito && (
-          <input
-            type="password"
-            required
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            placeholder="Password"
-            style={inputStyle}
-          />
-        )}
-        <button type="submit" style={btnStyle}>
-          {isCognito ? 'Sign In' : 'Continue'}
-        </button>
+        <input
+          type="password"
+          required
+          value={password}
+          onChange={e => setPassword(e.target.value)}
+          placeholder="Password"
+          style={inputStyle}
+        />
+        <button type="submit" style={btnStyle}>Sign In</button>
       </form>
     </div>
   )

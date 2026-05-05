@@ -1,10 +1,10 @@
 """API stack — API Gateway + Lambda functions + AgentCore streaming.
 
-Auth mode:
-  - "cognito": Cognito User Pool authorizer (default — dev/public)
-  - "none": No authorizer — identity from request body
-  - The prod overlay replaces this file entirely with Federate auth.
+Unified auth: supports both Cognito (dev) and Federate OIDC (prod)
+based on the auth_mode parameter.
 """
+from __future__ import annotations
+
 import os
 import aws_cdk as cdk
 from aws_cdk import (
@@ -14,6 +14,7 @@ from aws_cdk import (
     aws_apigateway as apigw,
     aws_cognito as cognito,
     aws_iam as iam,
+    aws_secretsmanager as sm,
     aws_events as events,
     aws_events_targets as targets,
 )
@@ -21,6 +22,7 @@ from constructs import Construct
 from stacks.data_stack import DataStack
 
 PROJECT_ROOT = os.path.join(os.path.dirname(__file__), "..", "..")
+LAYERS_DIR = os.path.join(os.path.dirname(__file__), "..", "layers")
 
 
 class ApiStack(Stack):
@@ -84,16 +86,16 @@ class ApiStack(Stack):
 
         # ── Common Lambda env ────────────────────────────────────────────────
         common_env = {
-            "SESSIONS_TABLE":            data_stack.sessions_table.table_name,
-            "MESSAGES_TABLE":            data_stack.messages_table.table_name,
-            "UPLOAD_BUCKET":             data_stack.uploads_bucket.bucket_name,
-            "JOBS_TABLE":                data_stack.jobs_table.table_name,
-            "TRANSCRIPTION_HANDLER_FN":  transcription_handler_name,
-            "AWS_ACCOUNT_ID":            self.account,
-            "POWERTOOLS_SERVICE_NAME":   prefix,
+            "SESSIONS_TABLE": data_stack.sessions_table.table_name,
+            "MESSAGES_TABLE": data_stack.messages_table.table_name,
+            "UPLOAD_BUCKET": data_stack.uploads_bucket.bucket_name,
+            "JOBS_TABLE": data_stack.jobs_table.table_name,
+            "TRANSCRIPTION_HANDLER_FN": transcription_handler_name,
+            "AWS_ACCOUNT_ID": self.account,
+            "POWERTOOLS_SERVICE_NAME": prefix,
         }
 
-        # AgentCore Memory ID (set via env var or CDK context)
+        # AgentCore Memory ID (set via CDK context or env)
         agentcore_memory_id = self.node.try_get_context("agentcoreMemoryId") or os.environ.get("AGENTCORE_MEMORY_ID", "")
         if agentcore_memory_id:
             common_env["AGENTCORE_MEMORY_ID"] = agentcore_memory_id
@@ -113,9 +115,9 @@ class ApiStack(Stack):
                 environment=common_env,
             )
 
-        sessions_fn   = _mk_fn("Sessions",   "sessions.handler")
-        upload_fn     = _mk_fn("Upload",      "upload.handler")
-        transcribe_fn = _mk_fn("Transcribe",  "transcribe.handler")
+        sessions_fn = _mk_fn("Sessions", "sessions.handler")
+        upload_fn = _mk_fn("Upload", "upload.handler")
+        transcribe_fn = _mk_fn("Transcribe", "transcribe.handler")
 
         # Jobs system
         jobs_poll_fn = _mk_fn("JobsPoll", "jobs_poll.handler", timeout=10)
@@ -149,11 +151,13 @@ class ApiStack(Stack):
             targets=[targets.LambdaFunction(job_resolver_fn)],
         )
 
-        # ── Cognito User Pool (dev auth) ────────────────────────────────────
+        # ── Auth setup (mode-dependent) ──────────────────────────────────────
         authorizer = None
         default_auth: dict = {}
+        auth_callback_fn = None
 
         if auth_mode == "cognito":
+            # ── Cognito User Pool (dev) ─────────────────────────────────────
             self.user_pool = cognito.UserPool(
                 self, "UserPool",
                 user_pool_name=f"{prefix}-users",
@@ -189,6 +193,87 @@ class ApiStack(Stack):
             cdk.CfnOutput(self, "UserPoolId", value=self.user_pool.user_pool_id)
             cdk.CfnOutput(self, "UserPoolClientId", value=self.user_pool_client.user_pool_client_id)
 
+        elif auth_mode == "federate":
+            # ── Federate OIDC (prod) ────────────────────────────────────────
+            # Config from CDK context or env vars
+            federate_issuer = self.node.try_get_context("federateIssuer") or os.environ.get("FEDERATE_ISSUER", "https://idp.federate.amazon.com")
+            federate_jwks_uri = self.node.try_get_context("federateJwksUri") or os.environ.get("FEDERATE_JWKS_URI", "https://idp.federate.amazon.com/api/oauth2/v2/certs")
+            federate_token_url = self.node.try_get_context("federateTokenUrl") or os.environ.get("FEDERATE_TOKEN_URL", "https://idp.federate.amazon.com/api/oauth2/v2/token")
+            federate_audience = self.node.try_get_context("federateAudience") or os.environ.get("FEDERATE_AUDIENCE", "storyteller-cognito")
+            federate_allowed_group = self.node.try_get_context("federateAllowedGroup") or os.environ.get("FEDERATE_ALLOWED_GROUP", "")
+
+            # Federate OIDC client secret (created manually, imported here)
+            federate_secret = sm.Secret.from_secret_name_v2(
+                self, "FederateSecret", "federate/storyteller-cognito",
+            )
+
+            # Shared PyJWT layer (ARM64 Python 3.13)
+            jwt_layer = lambda_.LayerVersion(
+                self, "PyJwtLayer",
+                code=lambda_.Code.from_asset(os.path.join(LAYERS_DIR, "federate-auth")),
+                compatible_runtimes=[lambda_.Runtime.PYTHON_3_13],
+                compatible_architectures=[lambda_.Architecture.ARM_64],
+                description="PyJWT[crypto] for Federate token validation",
+            )
+
+            # Auth-specific role (needs the Federate secret)
+            auth_role = iam.Role(
+                self, "AuthLambdaRole",
+                assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"),
+                managed_policies=[
+                    iam.ManagedPolicy.from_aws_managed_policy_name("service-role/AWSLambdaBasicExecutionRole"),
+                ],
+            )
+            federate_secret.grant_read(auth_role)
+
+            # Federate JWT authorizer Lambda
+            authorizer_fn = lambda_.Function(
+                self, "FederateAuthorizerFn",
+                function_name=f"{prefix}-federate-authorizer",
+                runtime=lambda_.Runtime.PYTHON_3_13,
+                architecture=lambda_.Architecture.ARM_64,
+                handler="federate_authorizer.handler",
+                code=lambda_.Code.from_asset(os.path.join(PROJECT_ROOT, "api")),
+                timeout=Duration.seconds(10),
+                memory_size=256,
+                role=auth_role,
+                layers=[jwt_layer],
+                environment={
+                    "FEDERATE_ISSUER": federate_issuer,
+                    "FEDERATE_JWKS_URI": federate_jwks_uri,
+                    "FEDERATE_AUDIENCE": federate_audience,
+                    "FEDERATE_ALLOWED_GROUP": federate_allowed_group,
+                },
+            )
+            authorizer = apigw.TokenAuthorizer(
+                self, "FederateAuthorizer",
+                handler=authorizer_fn,
+                identity_source="method.request.header.Authorization",
+                results_cache_ttl=Duration.minutes(5),
+            )
+
+            default_auth = {
+                "authorizer": authorizer,
+                "authorization_type": apigw.AuthorizationType.CUSTOM,
+            }
+
+            # Auth-callback Lambda (code→token exchange)
+            auth_callback_fn = lambda_.Function(
+                self, "AuthCallbackFn",
+                function_name=f"{prefix}-auth-callback",
+                runtime=lambda_.Runtime.PYTHON_3_13,
+                architecture=lambda_.Architecture.ARM_64,
+                handler="auth_callback.handler",
+                code=lambda_.Code.from_asset(os.path.join(PROJECT_ROOT, "api")),
+                timeout=Duration.seconds(15),
+                memory_size=256,
+                role=auth_role,
+                environment={
+                    "FEDERATE_TOKEN_URL": federate_token_url,
+                    "FEDERATE_SECRET_ARN": federate_secret.secret_arn,
+                },
+            )
+
         # ── API Gateway ──────────────────────────────────────────────────────
         api = apigw.RestApi(
             self, "StoryTellerApi",
@@ -202,11 +287,21 @@ class ApiStack(Stack):
         )
         self.api = api
 
+        # Auth callback route (Federate only — unauthenticated)
+        if auth_callback_fn is not None:
+            auth_res = api.root.add_resource("auth")
+            callback_res = auth_res.add_resource("callback")
+            callback_res.add_method(
+                "POST",
+                apigw.LambdaIntegration(auth_callback_fn),
+                authorization_type=apigw.AuthorizationType.NONE,
+            )
+
         # Sessions
-        sessions_res   = api.root.add_resource("sessions")
+        sessions_res = api.root.add_resource("sessions")
         sessions_res.add_method("GET", apigw.LambdaIntegration(sessions_fn), **default_auth)
         session_id_res = sessions_res.add_resource("{id}")
-        session_id_res.add_method("GET",    apigw.LambdaIntegration(sessions_fn), **default_auth)
+        session_id_res.add_method("GET", apigw.LambdaIntegration(sessions_fn), **default_auth)
         session_id_res.add_method("DELETE", apigw.LambdaIntegration(sessions_fn), **default_auth)
         share_res = session_id_res.add_resource("share")
         share_res.add_method("POST", apigw.LambdaIntegration(sessions_fn), **default_auth)
@@ -216,8 +311,8 @@ class ApiStack(Stack):
 
         # Upload
         upload_res = api.root.add_resource("upload")
-        upload_res.add_method("POST",   apigw.LambdaIntegration(upload_fn), **default_auth)
-        upload_res.add_method("GET",    apigw.LambdaIntegration(upload_fn), **default_auth)
+        upload_res.add_method("POST", apigw.LambdaIntegration(upload_fn), **default_auth)
+        upload_res.add_method("GET", apigw.LambdaIntegration(upload_fn), **default_auth)
         upload_res.add_method("DELETE", apigw.LambdaIntegration(upload_fn), **default_auth)
 
         # Transcribe
@@ -231,7 +326,7 @@ class ApiStack(Stack):
         jobs_poll_res = jobs_res.add_resource("poll")
         jobs_poll_res.add_method("GET", apigw.LambdaIntegration(jobs_poll_fn), **default_auth)
 
-        # ── AgentCore Runtime streaming (only if runtime ID provided) ─────
+        # ── AgentCore Runtime streaming ──────────────────────────────────────
         RUNTIME_ID = self.node.try_get_context("agentRuntimeId") or os.environ.get("AGENT_RUNTIME_ID", "")
         if RUNTIME_ID:
             RUNTIME_ENDPOINT = (
@@ -239,34 +334,54 @@ class ApiStack(Stack):
                 f"/runtimes/{RUNTIME_ID}/invocations"
                 f"?qualifier=DEFAULT&accountId={self.account}"
             )
+
+            # For federate mode, pass Authorization through to AgentCore
+            request_params = {
+                "integration.request.header.Content-Type": "'application/json'",
+            }
+            if auth_mode == "federate":
+                request_params["integration.request.header.Authorization"] = "method.request.header.Authorization"
+
             runtime_integration = apigw.HttpIntegration(
                 RUNTIME_ENDPOINT,
                 http_method="POST",
                 proxy=True,
                 options=apigw.IntegrationOptions(
                     connection_type=apigw.ConnectionType.INTERNET,
-                    timeout=Duration.seconds(29),
-                    request_parameters={
-                        "integration.request.header.Content-Type":
-                            "'application/json'",
-                    },
+                    timeout=Duration.minutes(15) if auth_mode == "federate" else Duration.seconds(29),
+                    request_parameters=request_params,
                 ),
             )
+
             chat_stream_res = api.root.add_resource("chat-stream")
-            stream_method = chat_stream_res.add_method(
-                "POST",
-                runtime_integration,
-                # No API GW auth — AgentCore validates the JWT directly via its
-                # customJWTAuthorizer config. This avoids API GW consuming the
-                # Authorization header before it reaches AgentCore.
-                authorization_type=apigw.AuthorizationType.NONE,
-            )
+
+            if auth_mode == "federate":
+                # Federate: authorizer validates JWT, pass Authorization header through
+                stream_method = chat_stream_res.add_method(
+                    "POST",
+                    runtime_integration,
+                    authorizer=authorizer,
+                    authorization_type=apigw.AuthorizationType.CUSTOM,
+                    request_parameters={"method.request.header.Authorization": True},
+                )
+            elif auth_mode == "cognito":
+                # Cognito: API GW validates token via Cognito authorizer
+                stream_method = chat_stream_res.add_method(
+                    "POST",
+                    runtime_integration,
+                    **default_auth,
+                )
+            else:
+                # No auth
+                stream_method = chat_stream_res.add_method(
+                    "POST",
+                    runtime_integration,
+                    authorization_type=apigw.AuthorizationType.NONE,
+                )
+
             cfn_method = stream_method.node.default_child
             cfn_method.add_property_override("Integration.ResponseTransferMode", "STREAM")
             cdk.CfnOutput(self, "StreamEndpoint", value=f"{api.url}chat-stream")
-        else:
-            # No runtime ID — skip chat-stream route (dev without AgentCore Runtime)
-            pass
 
         # ── Outputs ──────────────────────────────────────────────────────────
         cdk.CfnOutput(self, "ApiUrl", value=api.url)

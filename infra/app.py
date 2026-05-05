@@ -25,7 +25,7 @@ CONFIG = {
         "region": "us-east-1",
         "prefix": "storyteller",
         "stack_prefix": "StoryTeller",  # match existing CFN stack names
-        "auth_mode": "none",  # prod overlay replaces this file with federate auth
+        "auth_mode": "federate",  # Federate OIDC auth for prod
     },
 }
 
