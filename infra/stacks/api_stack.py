@@ -30,6 +30,8 @@ class ApiStack(Stack):
                  data_stack: DataStack,
                  auth_mode: str = "cognito",
                  prefix: str = "storyteller",
+                 agentcore_memory_id: str = "",
+                 runtime_role_arn: str = "",
                  **kwargs):
         super().__init__(scope, id, **kwargs)
 
@@ -83,25 +85,47 @@ class ApiStack(Stack):
 
         # ── AgentCore Runtime Role — app-level permissions ────────────────
         # The runtime role is created by `agentcore` CLI; we import and attach policy here.
-        runtime_role_arn = self.node.try_get_context("agentcoreRuntimeRoleArn") or os.environ.get("EXECUTION_ROLE", "")
-        if runtime_role_arn:
+        _runtime_role_arn = runtime_role_arn or self.node.try_get_context("agentcoreRuntimeRoleArn") or os.environ.get("EXECUTION_ROLE", "")
+        if _runtime_role_arn:
             runtime_role = iam.Role.from_role_arn(
-                self, "AgentCoreRuntimeRole", runtime_role_arn, mutable=True
+                self, "AgentCoreRuntimeRole", _runtime_role_arn, mutable=False
             )
-            runtime_role.add_to_policy(iam.PolicyStatement(
-                sid="SecretsManagerAccess",
-                actions=["secretsmanager:GetSecretValue"],
-                resources=[
-                    f"arn:aws:secretsmanager:{self.region}:{self.account}:secret:firecrawl/*",
-                    f"arn:aws:secretsmanager:{self.region}:{self.account}:secret:tavily/*",
-                    f"arn:aws:secretsmanager:{self.region}:{self.account}:secret:gcp/*",
-                    f"arn:aws:secretsmanager:{self.region}:{self.account}:secret:storyteller/*",
-                    f"arn:aws:secretsmanager:{self.region}:{self.account}:secret:perplexity/*",
+            # Attach a managed inline policy to the imported role
+            iam.Policy(self, "AgentCoreRuntimePolicy",
+                roles=[runtime_role],
+                statements=[
+                    iam.PolicyStatement(
+                        sid="SecretsManagerAccess",
+                        actions=["secretsmanager:GetSecretValue"],
+                        resources=[
+                            f"arn:aws:secretsmanager:{self.region}:{self.account}:secret:firecrawl/*",
+                            f"arn:aws:secretsmanager:{self.region}:{self.account}:secret:tavily/*",
+                            f"arn:aws:secretsmanager:{self.region}:{self.account}:secret:gcp/*",
+                            f"arn:aws:secretsmanager:{self.region}:{self.account}:secret:storyteller/*",
+                            f"arn:aws:secretsmanager:{self.region}:{self.account}:secret:perplexity/*",
+                        ],
+                    ),
+                    iam.PolicyStatement(
+                        sid="S3Access",
+                        actions=["s3:GetObject", "s3:PutObject", "s3:ListBucket"],
+                        resources=[
+                            data_stack.uploads_bucket.bucket_arn,
+                            f"{data_stack.uploads_bucket.bucket_arn}/*",
+                        ],
+                    ),
+                    iam.PolicyStatement(
+                        sid="DynamoDBAccess",
+                        actions=[
+                            "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem",
+                            "dynamodb:Query", "dynamodb:Scan",
+                        ],
+                        resources=[
+                            data_stack.sessions_table.table_arn,
+                            data_stack.jobs_table.table_arn,
+                        ],
+                    ),
                 ],
-            ))
-            data_stack.uploads_bucket.grant_read_write(runtime_role)
-            data_stack.sessions_table.grant_read_write_data(runtime_role)
-            data_stack.jobs_table.grant_read_write_data(runtime_role)
+            )
 
         # Transcription handler Lambda name (for job_resolver to invoke)
         transcription_handler_name = f"{prefix}-transcription-handler"
@@ -117,10 +141,14 @@ class ApiStack(Stack):
             "POWERTOOLS_SERVICE_NAME": prefix,
         }
 
-        # AgentCore Memory ID (set via CDK context or env)
-        agentcore_memory_id = self.node.try_get_context("agentcoreMemoryId") or os.environ.get("AGENTCORE_MEMORY_ID", "")
+        # AgentCore Memory ID (passed from stage config)
         if agentcore_memory_id:
             common_env["AGENTCORE_MEMORY_ID"] = agentcore_memory_id
+        else:
+            # Fallback to env var (for backward compat with deploy.sh)
+            _mem_id = self.node.try_get_context("agentcoreMemoryId") or os.environ.get("AGENTCORE_MEMORY_ID", "")
+            if _mem_id:
+                common_env["AGENTCORE_MEMORY_ID"] = _mem_id
 
         # ── Lambda factory ──────────────────────────────────────────────────
         def _mk_fn(name: str, handler: str, timeout: int = 30, memory: int = 256) -> lambda_.Function:

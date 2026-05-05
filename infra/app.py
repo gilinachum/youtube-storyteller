@@ -20,12 +20,16 @@ CONFIG = {
         "region": "us-west-2",
         "prefix": "storyteller-dev",
         "auth_mode": "cognito",
+        "agentcore_memory_id": "storytellerDevMemory-rStdOCAQvm",
+        "runtime_role_arn": "arn:aws:iam::726941381086:role/AmazonBedrockAgentCoreSDKRuntime-us-west-2-9bda7c8513",
     },
     "prod": {
         "region": "us-east-1",
         "prefix": "storyteller",
         "stack_prefix": "StoryTeller",  # match existing CFN stack names
         "auth_mode": "federate",  # Federate OIDC auth for prod
+        "agentcore_memory_id": "",  # TODO: add prod memory ID when created
+        "runtime_role_arn": "arn:aws:iam::726941381086:role/AmazonBedrockAgentCoreSDKRuntime-us-east-1-2a5e1ea1dc",
     },
 }
 
@@ -49,6 +53,8 @@ api = ApiStack(app, f"{sp}Api" if sp[0].isupper() else f"{cfg['prefix']}-api",
     data_stack=data,
     auth_mode=cfg["auth_mode"],
     prefix=cfg["prefix"],
+    agentcore_memory_id=cfg.get("agentcore_memory_id", ""),
+    runtime_role_arn=cfg.get("runtime_role_arn", ""),
     env=env,
 )
 
