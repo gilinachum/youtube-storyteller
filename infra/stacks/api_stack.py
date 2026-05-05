@@ -379,11 +379,11 @@ class ApiStack(Stack):
                 f"?qualifier=DEFAULT&accountId={self.account}"
             )
 
-            # Always forward Authorization header to AgentCore Runtime
-            # (so the agent can extract email from the JWT)
+            # Forward Authorization (for email extraction) and session ID (for pinning)
             request_params = {
                 "integration.request.header.Content-Type": "'application/json'",
                 "integration.request.header.Authorization": "method.request.header.Authorization",
+                "integration.request.header.X-Amzn-Bedrock-AgentCore-Runtime-Session-Id": "method.request.header.X-Session-Id",
             }
 
             runtime_integration = apigw.HttpIntegration(
@@ -406,7 +406,7 @@ class ApiStack(Stack):
                     runtime_integration,
                     authorizer=authorizer,
                     authorization_type=apigw.AuthorizationType.CUSTOM,
-                    request_parameters={"method.request.header.Authorization": True},
+                    request_parameters={"method.request.header.Authorization": True, "method.request.header.X-Session-Id": False},
                 )
             elif auth_mode == "cognito":
                 # Cognito: API GW validates token via Cognito authorizer
@@ -414,7 +414,7 @@ class ApiStack(Stack):
                     "POST",
                     runtime_integration,
                     **default_auth,
-                    request_parameters={"method.request.header.Authorization": True},
+                    request_parameters={"method.request.header.Authorization": True, "method.request.header.X-Session-Id": False},
                 )
             else:
                 # No auth

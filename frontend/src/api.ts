@@ -136,7 +136,7 @@ export async function streamChat(opts: StreamChatOptions): Promise<void> {
   const { message, sessionId, fileRefs, onChunk, onDone, onError, signal } = opts
 
   try {
-    const headers = await authHeaders({ 'Content-Type': 'application/json' })
+    const headers = await authHeaders({ 'Content-Type': 'application/json', 'X-Session-Id': sessionId })
     const res = await fetch(`${API_BASE}/chat-stream`, {
       method: 'POST', headers,
       body: JSON.stringify({
