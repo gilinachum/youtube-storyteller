@@ -153,6 +153,8 @@ def _get_messages_from_memory(session_id: str, email: str) -> list | None:
                         "timestamp": str(timestamp),
                     })
 
+                # Sort by timestamp (Memory returns newest-first, frontend expects oldest-first)
+        messages.sort(key=lambda m: m.get("timestamp", ""))
         return messages if messages else None
 
     except Exception as e:
