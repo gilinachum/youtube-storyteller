@@ -30,8 +30,6 @@ class ApiStack(Stack):
                  data_stack: DataStack,
                  auth_mode: str = "cognito",
                  prefix: str = "storyteller",
-                 agentcore_memory_id: str = "",
-                 runtime_role_arn: str = "",
                  **kwargs):
         super().__init__(scope, id, **kwargs)
 
@@ -85,7 +83,7 @@ class ApiStack(Stack):
 
         # ── AgentCore Runtime Role — app-level permissions ────────────────
         # The runtime role is created by `agentcore` CLI; we import and attach policy here.
-        _runtime_role_arn = runtime_role_arn or self.node.try_get_context("agentcoreRuntimeRoleArn") or os.environ.get("EXECUTION_ROLE", "")
+        _runtime_role_arn = os.environ.get("EXECUTION_ROLE", "")
         if _runtime_role_arn:
             runtime_role = iam.Role.from_role_arn(
                 self, "AgentCoreRuntimeRole", _runtime_role_arn, mutable=False
@@ -141,14 +139,10 @@ class ApiStack(Stack):
             "POWERTOOLS_SERVICE_NAME": prefix,
         }
 
-        # AgentCore Memory ID (passed from stage config)
+        # AgentCore Memory ID (from .env.{stage}, loaded by app.py)
+        agentcore_memory_id = os.environ.get("AGENTCORE_MEMORY_ID", "")
         if agentcore_memory_id:
             common_env["AGENTCORE_MEMORY_ID"] = agentcore_memory_id
-        else:
-            # Fallback to env var (for backward compat with deploy.sh)
-            _mem_id = self.node.try_get_context("agentcoreMemoryId") or os.environ.get("AGENTCORE_MEMORY_ID", "")
-            if _mem_id:
-                common_env["AGENTCORE_MEMORY_ID"] = _mem_id
 
         # ── Lambda factory ──────────────────────────────────────────────────
         def _mk_fn(name: str, handler: str, timeout: int = 30, memory: int = 256) -> lambda_.Function:

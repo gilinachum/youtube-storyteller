@@ -5,6 +5,7 @@ Usage:
     cdk deploy --all --context stage=prod   # us-east-1, Federate auth (overlay)
 """
 import os
+from pathlib import Path
 import aws_cdk as cdk
 from stacks.data_stack import DataStack
 from stacks.api_stack import ApiStack
@@ -15,21 +16,26 @@ app = cdk.App()
 
 stage = app.node.try_get_context("stage") or os.environ.get("STAGE", "dev")
 
+# Load .env.{stage} file into os.environ (so CDK picks up config without shell sourcing)
+_env_file = Path(__file__).parent.parent / f".env.{stage}"
+if _env_file.exists():
+    for line in _env_file.read_text().splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            key, _, value = line.partition("=")
+            os.environ.setdefault(key.strip(), value.strip())
+
 CONFIG = {
     "dev": {
         "region": "us-west-2",
         "prefix": "storyteller-dev",
         "auth_mode": "cognito",
-        "agentcore_memory_id": "storytellerDevMemory-rStdOCAQvm",
-        "runtime_role_arn": "arn:aws:iam::726941381086:role/AmazonBedrockAgentCoreSDKRuntime-us-west-2-9bda7c8513",
     },
     "prod": {
         "region": "us-east-1",
         "prefix": "storyteller",
         "stack_prefix": "StoryTeller",  # match existing CFN stack names
         "auth_mode": "federate",  # Federate OIDC auth for prod
-        "agentcore_memory_id": "",  # TODO: add prod memory ID when created
-        "runtime_role_arn": "arn:aws:iam::726941381086:role/AmazonBedrockAgentCoreSDKRuntime-us-east-1-2a5e1ea1dc",
     },
 }
 
@@ -53,8 +59,6 @@ api = ApiStack(app, f"{sp}Api" if sp[0].isupper() else f"{cfg['prefix']}-api",
     data_stack=data,
     auth_mode=cfg["auth_mode"],
     prefix=cfg["prefix"],
-    agentcore_memory_id=cfg.get("agentcore_memory_id", ""),
-    runtime_role_arn=cfg.get("runtime_role_arn", ""),
     env=env,
 )
 
