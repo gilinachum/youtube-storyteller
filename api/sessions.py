@@ -161,19 +161,8 @@ def _get_messages_from_memory(session_id: str, email: str) -> list | None:
 
 
 def get_session(session_id: str, email: str = ""):
-    # Try AgentCore Memory first, fall back to DDB
-    messages = _get_messages_from_memory(session_id, email)
-
-    if messages is None:
-        # Fallback: read from DDB (legacy data or memory unavailable)
-        msgs_table = dynamodb.Table(MESSAGES_TABLE)
-        result = msgs_table.query(KeyConditionExpression=Key("session_id").eq(session_id))
-        messages = result.get("Items", [])
-        messages.sort(key=lambda m: m.get("timestamp", ""))
-
-    # Get session metadata (including files)
+    # Get session metadata first (needed for shared sessions)
     sess_table = dynamodb.Table(SESSIONS_TABLE)
-    # Try to find the session — could be under this email or shared
     session_meta = None
     if email:
         resp = sess_table.get_item(Key={"email": email, "session_id": session_id})
@@ -189,6 +178,17 @@ def get_session(session_id: str, email: str = ""):
         items = scan.get("Items", [])
         if items:
             session_meta = items[0]
+
+    # For AgentCore Memory: use the owner's email as actorId (not the viewer's)
+    memory_email = session_meta.get("email", email) if session_meta else email
+    messages = _get_messages_from_memory(session_id, memory_email)
+
+    if messages is None:
+        # Fallback: read from DDB (legacy data or memory unavailable)
+        msgs_table = dynamodb.Table(MESSAGES_TABLE)
+        result = msgs_table.query(KeyConditionExpression=Key("session_id").eq(session_id))
+        messages = result.get("Items", [])
+        messages.sort(key=lambda m: m.get("timestamp", ""))
 
     files = session_meta.get("files", []) if session_meta else []
     shared_with = session_meta.get("shared_with", []) if session_meta else []
