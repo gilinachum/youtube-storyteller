@@ -10,8 +10,10 @@ from strands import tool
 logger = logging.getLogger(__name__)
 
 JOBS_TABLE = os.environ.get("JOBS_TABLE", "storyteller-jobs")
+UPLOAD_BUCKET = os.environ.get("UPLOAD_BUCKET", "")
 
 dynamodb = boto3.resource("dynamodb")
+s3 = boto3.client("s3")
 
 
 def make_list_pending_jobs_tool(email: str, session_id: str):
@@ -45,8 +47,9 @@ def make_list_pending_jobs_tool(email: str, session_id: str):
                 and item.get("status") in ("completed", "failed")
             ]
 
-            jobs = [
-                {
+            jobs = []
+            for item in pending:
+                job = {
                     "job_id": item["job_id"],
                     "job_type": item.get("job_type", ""),
                     "status": item["status"],
@@ -55,8 +58,27 @@ def make_list_pending_jobs_tool(email: str, session_id: str):
                     "metadata": item.get("metadata", {}),
                     "created_at": item.get("created_at", ""),
                 }
-                for item in pending
-            ]
+
+                # Generate presigned download URL for completed transcription files
+                result_data = item.get("result") or {}
+                s3_key = result_data.get("s3_key", "") if isinstance(result_data, dict) else ""
+                if s3_key and UPLOAD_BUCKET and item.get("status") == "completed":
+                    try:
+                        filename = s3_key.split("/")[-1]
+                        download_url = s3.generate_presigned_url(
+                            "get_object",
+                            Params={
+                                "Bucket": UPLOAD_BUCKET,
+                                "Key": s3_key,
+                                "ResponseContentDisposition": f'attachment; filename="{filename}"',
+                            },
+                            ExpiresIn=3600,
+                        )
+                        job["download_url"] = download_url
+                    except Exception as e:
+                        logger.warning("Failed to generate presigned URL for %s: %s", s3_key, e)
+
+                jobs.append(job)
 
             return json.dumps({"jobs": jobs, "count": len(jobs)}, ensure_ascii=False, default=str)
 

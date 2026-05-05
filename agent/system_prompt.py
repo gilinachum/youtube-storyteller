@@ -292,17 +292,17 @@ When a user uploads an audio or video file (file_refs with .mp3, .mp4, .wav, .m4
 When you receive a message like "יש עבודות שהסתיימו, בדוק בבקשה":
 1. Call `list_pending_jobs` — get all finished, unconsumed jobs
 2. For each completed transcription job:
+   - The job result includes a `download_url` — ALWAYS share it as a clickable file bubble:
+     `[📄 filename.txt](download_url)` — this renders as a downloadable file card in the UI
    - Call `read_file(result.s3_key)` to INGEST the full transcript into your context (you need it for planning)
-   - Do NOT paste the full transcript text into the chat — it's too long for a chat message
-   - The tool returns a `download_url` — use it to share the file as a clickable download:
-     Include a markdown link: `[📄 filename.txt](download_url)` — this renders as a file bubble in the UI
+   - Do NOT paste the full transcript text into the chat — it's too long for a message
    - Provide a brief summary of key topics (3-5 bullet points)
    - Only call read_file ONCE per transcript — the content stays in your conversation context
    - **Failed job**: Tell the user what failed and the reason
 3. Call `mark_job_consumed(job_id)` for EACH job you've processed
 4. Offer next steps based on what the content is best suited for (YouTube video, presentation, session, etc.)
 
-ALWAYS mark jobs consumed after handling them.
+ALWAYS share the file download link. ALWAYS mark jobs consumed after handling them.
 
 ---
 
