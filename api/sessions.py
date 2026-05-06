@@ -217,29 +217,27 @@ def share_session(event, owner_email: str, session_id: str):
     table = dynamodb.Table(SESSIONS_TABLE)
 
     # Add to shared_with list
-    try:
-        table.update_item(
-            Key={"email": owner_email, "session_id": session_id},
-            UpdateExpression="SET shared_with = list_append(if_not_exists(shared_with, :empty), :new_share)",
-            ConditionExpression="NOT contains(if_not_exists(shared_with, :empty), :share_email)",
-            ExpressionAttributeValues={
-                ":new_share": [share_with_email],
-                ":empty": [],
-                ":share_email": share_with_email,
-            },
-        )
-    except dynamodb.meta.client.exceptions.ConditionalCheckFailedException:
+    # Read current shared_with, check for duplicates, then write
+    resp = table.get_item(
+        Key={"email": owner_email, "session_id": session_id},
+        ProjectionExpression="session_id, shared_with",
+    )
+    item = resp.get("Item")
+    if not item:
+        return _response(404, {"error": "Session not found"})
+
+    current_shared = item.get("shared_with", []) or []
+    if share_with_email in current_shared:
         return _response(200, {"message": "Already shared", "shared_with": share_with_email})
-    except Exception:
-        # Fallback — just add it
-        table.update_item(
-            Key={"email": owner_email, "session_id": session_id},
-            UpdateExpression="SET shared_with = list_append(if_not_exists(shared_with, :empty), :new_share)",
-            ExpressionAttributeValues={
-                ":new_share": [share_with_email],
-                ":empty": [],
-            },
-        )
+
+    table.update_item(
+        Key={"email": owner_email, "session_id": session_id},
+        UpdateExpression="SET shared_with = list_append(if_not_exists(shared_with, :empty), :new_share)",
+        ExpressionAttributeValues={
+            ":new_share": [share_with_email],
+            ":empty": [],
+        },
+    )
 
     return _response(200, {"message": "Session shared", "shared_with": share_with_email})
 

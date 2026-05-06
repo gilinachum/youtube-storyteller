@@ -23,7 +23,7 @@ try:
 except ImportError:
     from api._auth_context import caller_email
 
-JOBS_TABLE = os.environ.get("JOBS_TABLE", "storyteller-dev-jobs")
+JOBS_TABLE = os.environ.get("JOBS_TABLE", "storyteller-jobs")
 
 dynamodb = boto3.resource("dynamodb")
 

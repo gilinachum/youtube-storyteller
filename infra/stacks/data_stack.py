@@ -14,10 +14,11 @@ class DataStack(Stack):
     def __init__(self, scope: Construct, id: str, prefix: str = "storyteller", **kwargs):
         super().__init__(scope, id, **kwargs)
 
+        # Table names are fixed (same in dev and prod — deployed to different regions)
         # ── Sessions table ──────────────────────────────────────────────────
         self.sessions_table = dynamodb.Table(
             self, "SessionsTable",
-            table_name=f"{prefix}-sessions",
+            table_name="storyteller-sessions",
             partition_key=dynamodb.Attribute(name="email", type=dynamodb.AttributeType.STRING),
             sort_key=dynamodb.Attribute(name="session_id", type=dynamodb.AttributeType.STRING),
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
@@ -28,7 +29,7 @@ class DataStack(Stack):
         # ── Messages table ──────────────────────────────────────────────────
         self.messages_table = dynamodb.Table(
             self, "MessagesTable",
-            table_name=f"{prefix}-messages",
+            table_name="storyteller-messages",
             partition_key=dynamodb.Attribute(name="session_id", type=dynamodb.AttributeType.STRING),
             sort_key=dynamodb.Attribute(name="timestamp", type=dynamodb.AttributeType.STRING),
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
@@ -39,7 +40,7 @@ class DataStack(Stack):
         # ── Jobs table (long-running async jobs — transcription, analysis, etc.) ──
         self.jobs_table = dynamodb.Table(
             self, "JobsTable",
-            table_name=f"{prefix}-jobs",
+            table_name="storyteller-jobs",
             partition_key=dynamodb.Attribute(name="session_id", type=dynamodb.AttributeType.STRING),
             sort_key=dynamodb.Attribute(name="job_id", type=dynamodb.AttributeType.STRING),
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,

@@ -17,7 +17,7 @@ from boto3.dynamodb.conditions import Key
 
 logger = logging.getLogger(__name__)
 
-JOBS_TABLE = os.environ.get("JOBS_TABLE", "storyteller-dev-jobs")
+JOBS_TABLE = os.environ.get("JOBS_TABLE", "storyteller-jobs")
 TRANSCRIPTION_HANDLER_FN = os.environ.get("TRANSCRIPTION_HANDLER_FN", "storyteller-transcription-handler")
 
 dynamodb = boto3.resource("dynamodb")

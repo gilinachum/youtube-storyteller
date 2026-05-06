@@ -81,15 +81,12 @@ if [[ -n "$AGENT_RUNTIME_ID" ]]; then
   echo ""
   echo "🤖 Deploying agent to AgentCore Runtime..."
   REGION="${BEDROCK_REGION:-us-east-1}"
-  MESSAGES_TABLE="${MESSAGES_TABLE:?Set MESSAGES_TABLE env var}"
-  SESSIONS_TABLE="${SESSIONS_TABLE:?Set SESSIONS_TABLE env var}"
   UPLOAD_BUCKET="${UPLOAD_BUCKET:?Set UPLOAD_BUCKET env var}"
   BEDROCK_MODEL_ID="${BEDROCK_MODEL_ID:-us.anthropic.claude-sonnet-4-6}"
   DEPLOY_TS=$(date -u +%Y%m%d%H%M%S)
 
+  # Table names are fixed (same in dev/prod — different regions)
   uv run agentcore deploy \
-    --env MESSAGES_TABLE="$MESSAGES_TABLE" \
-    --env SESSIONS_TABLE="$SESSIONS_TABLE" \
     --env UPLOAD_BUCKET="$UPLOAD_BUCKET" \
     --env BEDROCK_MODEL_ID="$BEDROCK_MODEL_ID" \
     --env BEDROCK_REGION="$REGION" \

@@ -15,6 +15,7 @@ AI-powered assistant for planning engaging Hebrew YouTube videos. Built with **S
 
 | Doc | What it covers |
 |-----|---------------|
+| [docs/CODING-GUIDELINES.md](docs/CODING-GUIDELINES.md) | Workflow rules, security, AWS patterns, common mistakes |
 | [docs/PRODUCT.md](docs/PRODUCT.md) | What StoryTeller does, user flow, design principles |
 | [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) | All functional requirements (current + planned) |
 | [docs/TECHNICAL-DESIGN.md](docs/TECHNICAL-DESIGN.md) | Architecture, data model, sub-agents, streaming |
@@ -87,6 +88,7 @@ cp .env.example .env
 | `scripts/deploy.sh` | Deploy agent to AgentCore + restore JWT auth |
 | `scripts/deploy-frontend.sh` | Build + S3 sync + CloudFront invalidation |
 | `scripts/deploy-all.sh` | Both of the above |
+| `scripts/update_runtime_env.py` | **Safe** runtime env var update (preserves auth config) |
 | `scripts/test.sh` | Unit tests (moto, fast) |
 | `scripts/test-e2e.sh` | Playwright browser tests |
 | `scripts/check-agent.sh` | Verify agent status/auth/env |
@@ -106,7 +108,26 @@ Set in `.env` (gitignored):
 | `CDK_DEFAULT_REGION` | AWS region |
 
 Agent runtime env vars (set via deploy script):
-`MESSAGES_TABLE`, `SESSIONS_TABLE`, `UPLOAD_BUCKET`, `BEDROCK_MODEL_ID`, `BEDROCK_REGION`
+`UPLOAD_BUCKET`, `BEDROCK_MODEL_ID`, `BEDROCK_REGION`, `AGENTCORE_MEMORY_ID`
+
+> **⚠️ AgentCore `update_agent_runtime` is full-replace, not patch.**
+> Omitting fields like `authorizerConfiguration` **wipes them**, breaking JWT auth.
+> Never call the API directly — use `scripts/update_runtime_env.py` or `deploy.sh`.
+>
+> ```bash
+> # Safe way to update runtime env vars:
+> python3 scripts/update_runtime_env.py KEY=value
+> python3 scripts/update_runtime_env.py --remove OLD_KEY
+> ```
+
+### DynamoDB Table Names
+
+Table names are **fixed** across all environments (dev and prod are in different regions):
+- `storyteller-sessions`
+- `storyteller-messages`
+- `storyteller-jobs`
+
+No `MESSAGES_TABLE` / `SESSIONS_TABLE` / `JOBS_TABLE` env vars needed — code defaults match.
 
 ## Testing
 

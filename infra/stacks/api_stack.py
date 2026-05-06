@@ -68,9 +68,17 @@ class ApiStack(Stack):
             ],
             resources=["*"],
         ))
-        data_stack.sessions_table.grant_read_write_data(lambda_role)
-        data_stack.messages_table.grant_read_write_data(lambda_role)
-        data_stack.jobs_table.grant_read_write_data(lambda_role)
+        # DynamoDB access for Lambda role (fixed table names, no cross-stack exports)
+        lambda_role.add_to_policy(iam.PolicyStatement(
+            actions=[
+                "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem",
+                "dynamodb:DeleteItem", "dynamodb:Query", "dynamodb:Scan",
+                "dynamodb:BatchWriteItem",
+            ],
+            resources=[
+                f"arn:aws:dynamodb:{self.region}:{self.account}:table/storyteller-*",
+            ],
+        ))
         data_stack.uploads_bucket.grant_read_write(lambda_role)
         lambda_role.add_to_policy(iam.PolicyStatement(
             actions=[
@@ -115,11 +123,10 @@ class ApiStack(Stack):
                         sid="DynamoDBAccess",
                         actions=[
                             "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem",
-                            "dynamodb:Query", "dynamodb:Scan",
+                            "dynamodb:DeleteItem", "dynamodb:Query", "dynamodb:Scan",
                         ],
                         resources=[
-                            data_stack.sessions_table.table_arn,
-                            data_stack.jobs_table.table_arn,
+                            f"arn:aws:dynamodb:{self.region}:{self.account}:table/storyteller-*",
                         ],
                     ),
                 ],
@@ -129,11 +136,12 @@ class ApiStack(Stack):
         transcription_handler_name = f"{prefix}-transcription-handler"
 
         # ── Common Lambda env ────────────────────────────────────────────────
+        # Table names are fixed across all stages (different regions = no collision)
         common_env = {
-            "SESSIONS_TABLE": data_stack.sessions_table.table_name,
-            "MESSAGES_TABLE": data_stack.messages_table.table_name,
+            "SESSIONS_TABLE": "storyteller-sessions",
+            "MESSAGES_TABLE": "storyteller-messages",
             "UPLOAD_BUCKET": data_stack.uploads_bucket.bucket_name,
-            "JOBS_TABLE": data_stack.jobs_table.table_name,
+            "JOBS_TABLE": "storyteller-jobs",
             "TRANSCRIPTION_HANDLER_FN": transcription_handler_name,
             "AWS_ACCOUNT_ID": self.account,
             "POWERTOOLS_SERVICE_NAME": prefix,

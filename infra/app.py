@@ -73,9 +73,9 @@ frontend.add_dependency(api)
 # ── Backup stack (DynamoDB daily snapshots) ──────────────────────────────
 account = os.environ.get("CDK_DEFAULT_ACCOUNT", "726941381086")
 table_arns = [
-    f"arn:aws:dynamodb:{cfg['region']}:{account}:table/{cfg['prefix']}-sessions",
-    f"arn:aws:dynamodb:{cfg['region']}:{account}:table/{cfg['prefix']}-messages",
-    f"arn:aws:dynamodb:{cfg['region']}:{account}:table/{cfg['prefix']}-jobs",
+    f"arn:aws:dynamodb:{cfg['region']}:{account}:table/storyteller-sessions",
+    f"arn:aws:dynamodb:{cfg['region']}:{account}:table/storyteller-messages",
+    f"arn:aws:dynamodb:{cfg['region']}:{account}:table/storyteller-jobs",
 ]
 backup_stack = BackupStack(app, f"{cfg['prefix']}-backup",
     prefix=cfg["prefix"],
