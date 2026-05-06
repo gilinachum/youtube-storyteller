@@ -38,8 +38,8 @@ export default function ChatInput({ onSend, disabled, onUpload, onTranscribe }: 
     return 'rtl'
   }, [text])
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSubmit = (e?: React.FormEvent) => {
+    e?.preventDefault()
     const trimmed = text.trim()
     if ((!trimmed && attachedFiles.length === 0) || disabled) return
     onSend(trimmed, attachedFiles.length > 0 ? attachedFiles : undefined)
