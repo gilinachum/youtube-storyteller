@@ -57,6 +57,10 @@ fi
 echo "🔑 Auth mode: $VITE_AUTH_MODE"
 
 # ── Build frontend ───────────────────────────────────────────────────────────
+# ── Inject version from git ──────────────────────────────────────────────────
+export VITE_APP_VERSION=$(git describe --tags --always 2>/dev/null || echo "0.0.0-$(git rev-parse --short HEAD)")
+echo "📌 Version: $VITE_APP_VERSION"
+
 echo ""
 echo "🏗️  Building frontend..."
 cd "$PROJECT_DIR/frontend"

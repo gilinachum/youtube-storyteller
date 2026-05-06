@@ -11,5 +11,14 @@ import './index.css'
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <App />
+    <span
+      style={{
+        position: 'fixed', bottom: 4, right: 6,
+        fontSize: 10, color: '#64748b', opacity: 0.3,
+        pointerEvents: 'none', userSelect: 'none', zIndex: 9999,
+      }}
+    >
+      {import.meta.env.VITE_APP_VERSION || 'dev'}
+    </span>
   </React.StrictMode>
 )
