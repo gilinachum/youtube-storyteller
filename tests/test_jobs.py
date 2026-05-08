@@ -447,19 +447,8 @@ class TestTranscriptionHandler:
 # ── start_transcription tool tests ────────────────────────────────────────────
 
 def _import_start_transcription():
-    """Import start_transcription module directly, bypassing __init__.py (no strands needed)."""
-    import importlib.util
-    spec = importlib.util.spec_from_file_location(
-        "start_transcription",
-        os.path.join(PROJECT_ROOT, "agent", "tools", "start_transcription.py"),
-    )
-    mod = importlib.util.module_from_spec(spec)
-    # Provide a minimal strands.tool stub so the @tool decorator works
-    import types
-    strands_stub = types.ModuleType("strands")
-    strands_stub.tool = lambda fn: fn  # identity decorator
-    sys.modules.setdefault("strands", strands_stub)
-    spec.loader.exec_module(mod)
+    """Import start_transcription module."""
+    import agent.tools.start_transcription as mod
     return mod
 
 
@@ -484,7 +473,7 @@ class TestStartTranscriptionTool:
             mock_boto.resource.return_value = dynamodb
 
             tool_fn = st_module.make_start_transcription_tool("user@example.com", "sess-test")
-            result = tool_fn(
+            result = tool_fn._tool_func(
                 s3_key="uploads/user/sess/abc-video.mp4",
                 file_id="abc",
                 filename="video.mp4",

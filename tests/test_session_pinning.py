@@ -21,35 +21,7 @@ os.environ.setdefault("MESSAGES_TABLE", "test-messages")
 os.environ.setdefault("SESSIONS_TABLE", "test-sessions")
 os.environ.setdefault("UPLOAD_BUCKET", "test-uploads")
 
-# Mock heavy dependencies not available in test env
-_mock_agentcore = MagicMock()
-sys.modules.setdefault("bedrock_agentcore", _mock_agentcore)
-sys.modules.setdefault("bedrock_agentcore.runtime", _mock_agentcore.runtime)
-sys.modules.setdefault("bedrock_agentcore.runtime.app", _mock_agentcore.runtime.app)
-sys.modules.setdefault("bedrock_agentcore.memory", _mock_agentcore.memory)
-sys.modules.setdefault("bedrock_agentcore.memory.client", _mock_agentcore.memory.client)
-sys.modules.setdefault("bedrock_agentcore.memory.integrations", _mock_agentcore.memory.integrations)
-sys.modules.setdefault("bedrock_agentcore.memory.integrations.strands", _mock_agentcore.memory.integrations.strands)
-sys.modules.setdefault("bedrock_agentcore.memory.integrations.strands.session_manager", _mock_agentcore.memory.integrations.strands.session_manager)
 
-_mock_strands = MagicMock()
-sys.modules.setdefault("strands", _mock_strands)
-sys.modules.setdefault("strands.models", _mock_strands.models)
-sys.modules.setdefault("strands.models.bedrock", _mock_strands.models.bedrock)
-
-# Mock all agent submodules that have heavy deps
-for mod in [
-    "pdfplumber", "firecrawl", "botocore.config",
-    "agent.main", "agent.tools", "agent.tools.pdf_extract",
-    "agent.tools.web_research", "agent.tools.trend_analysis",
-    "agent.tools.content_fetch", "agent.tools.generate_thumbnail",
-    "agent.tools.session_manager", "agent.tools.export_document",
-    "agent.tools.save_user_photo", "agent.tools.start_transcription",
-    "agent.tools.list_pending_jobs", "agent.tools.mark_job_consumed",
-    "agent.tools.read_file", "agent.research_agent", "agent.thumbnail_agent",
-    "agent.system_prompt",
-]:
-    sys.modules.setdefault(mod, MagicMock())
 
 
 def _make_jwt(claims: dict) -> str:

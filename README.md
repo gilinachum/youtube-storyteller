@@ -131,9 +131,10 @@ No `MESSAGES_TABLE` / `SESSIONS_TABLE` / `JOBS_TABLE` env vars needed — code d
 
 ## Testing
 
-- **41 unit tests** — mocked with moto (DynamoDB, S3)
-- **6 E2E live tests** — 3 positive (URL planning, topic planning, long content split) + 3 negative (off-topic, prompt injection, inappropriate content)
-- **5 Playwright tests** — browser-based login, chat, session management
+- **Unit tests** — mocked with moto (DynamoDB, S3)
+- **API tests** — all Lambda handlers (sessions, upload, jobs, transcribe, thumbnails)
+- **E2E live tests** — positive flows (URL planning, topic planning, long content split) + negative (off-topic, prompt injection, inappropriate content)
+- **Playwright tests** — browser-based login, chat, session management
 
 ---
 
