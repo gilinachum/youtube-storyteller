@@ -103,7 +103,8 @@ Loaded at session start; followed for every code change, bug fix, or feature.
 ## AWS / Infrastructure (Project-Specific)
 
 ### IAM
-- When adding DynamoDB tables, S3 buckets, or any new resource: **update IAM policies** for all roles that need access (Lambda role + AgentCore runtime role).
+- **Permissions are part of the feature — not an afterthought.** Whenever you add, change, or remove functionality: ask what AWS actions the runtime component (Lambda, ECS task, EC2) needs, and update its IAM role accordingly. Adding a DDB read? Grant `GetItem`. Removing an S3 write? Revoke `PutObject`. Silent `AccessDenied` errors are the #1 cause of "works in dev" bugs.
+- **When a Lambda calls a new AWS service for the first time, always add the grant in the same CDK commit as the code change.**
 - Use `storyteller-*` wildcard for DynamoDB policies (tables have fixed names across environments).
 - Check BOTH the CDK-managed policy AND manually-attached inline policies on the runtime role.
 
@@ -140,6 +141,14 @@ Loaded at session start; followed for every code change, bug fix, or feature.
 - Agent code defaults to correct table/bucket names. Only `UPLOAD_BUCKET` needs an env var (auto-generated bucket name).
 - `AGENTCORE_MEMORY_ID` must be set on runtime (per-environment memory store).
 - `BEDROCK_REGION` must match the deployment region.
+
+### Versioning
+- App version is derived from **git tags** via `git describe --tags --always` at build time.
+- Exported as `VITE_APP_VERSION` during frontend build (shown as a subtle badge in bottom-right corner).
+- **Tag every meaningful release** with semver: `git tag v1.1.0 && git push --tags`.
+- Format: `v<major>.<minor>.<patch>` — between tags, `git describe` produces `v1.0.0-3-gabcdef`.
+- If no tag exists, falls back to `0.0.0-<short-hash>`.
+- Use the version to correlate bug reports with deployed code.
 
 ### Deploy Checklist
 1. `cd frontend && npx tsc --noEmit` — catch type errors
