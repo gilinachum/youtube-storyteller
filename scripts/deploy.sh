@@ -72,7 +72,7 @@ cd "$PROJECT_DIR"
 echo ""
 echo "☁️  Deploying CDK stacks (stage=$STAGE)..."
 cd "$PROJECT_DIR/infra"
-cdk deploy --all --context stage="$STAGE" --require-approval never
+STORYTELLER_DEPLOY_SCRIPT=1 cdk deploy --all --context stage="$STAGE" --require-approval never
 cd "$PROJECT_DIR"
 
 # ── AgentCore deploy (if AGENT_RUNTIME_ID is set) ────────────────────────────

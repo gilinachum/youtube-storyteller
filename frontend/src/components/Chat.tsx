@@ -495,6 +495,7 @@ export default function Chat({ email, onLogout }: Props) {
           streamingContent={streamingContent}
           isStreaming={loading && !!streamingContent}
           email={email}
+          sessionId={currentSessionId}
         />
         <ChatInput onSend={handleSend} disabled={loading} onUpload={handleUpload} onTranscribe={handleTranscribe} />
       </div>

@@ -138,14 +138,8 @@ def make_export_document_tool(email: str, session_id: str):
             except Exception:
                 pass  # Best effort — file is in S3 regardless
 
-            # Generate presigned download URL (valid 7 days — S3 maximum)
-            download_url = s3.generate_presigned_url(
-                "get_object",
-                Params={"Bucket": UPLOAD_BUCKET, "Key": s3_key},
-                ExpiresIn=604800,
-            )
-
-            return f"✅ המסמך נוצר בהצלחה! המסמך נשמר בקבצי השיחה ותוכל להוריד אותו משם.\n\n[לחץ כאן להורדה]({download_url})"
+            # Return a file:// reference — frontend resolves on-demand
+            return f"\u2705 המסמך נוצר בהצלחה!\n\n[\ud83d\udcc4 {filename}](file://{file_id})"
 
         except Exception as e:
             # Fallback — return the document as text if upload fails

@@ -129,6 +129,15 @@ class ApiStack(Stack):
                             f"arn:aws:dynamodb:{self.region}:{self.account}:table/storyteller-*",
                         ],
                     ),
+                    iam.PolicyStatement(
+                        sid="TranscribeAccess",
+                        actions=[
+                            "transcribe:StartTranscriptionJob",
+                            "transcribe:GetTranscriptionJob",
+                            "transcribe:DeleteTranscriptionJob",
+                        ],
+                        resources=["*"],
+                    ),
                 ],
             )
 

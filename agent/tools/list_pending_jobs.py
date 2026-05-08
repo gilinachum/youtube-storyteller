@@ -10,10 +10,8 @@ from strands import tool
 logger = logging.getLogger(__name__)
 
 JOBS_TABLE = os.environ.get("JOBS_TABLE", "storyteller-jobs")
-UPLOAD_BUCKET = os.environ.get("UPLOAD_BUCKET", "")
 
 dynamodb = boto3.resource("dynamodb")
-s3 = boto3.client("s3")
 
 
 def make_list_pending_jobs_tool(email: str, session_id: str):
@@ -59,24 +57,31 @@ def make_list_pending_jobs_tool(email: str, session_id: str):
                     "created_at": item.get("created_at", ""),
                 }
 
-                # Generate presigned download URL for completed transcription files
+                # For completed jobs with files, provide a file:// reference
+                # (frontend resolves these on-demand via /api/sessions/{id}/files/{file_id})
                 result_data = item.get("result") or {}
                 s3_key = result_data.get("s3_key", "") if isinstance(result_data, dict) else ""
-                if s3_key and UPLOAD_BUCKET and item.get("status") == "completed":
-                    try:
-                        filename = s3_key.split("/")[-1]
-                        download_url = s3.generate_presigned_url(
-                            "get_object",
-                            Params={
-                                "Bucket": UPLOAD_BUCKET,
-                                "Key": s3_key,
-                                "ResponseContentDisposition": f'attachment; filename="{filename}"',
-                            },
-                            ExpiresIn=3600,
-                        )
-                        job["download_url"] = download_url
-                    except Exception as e:
-                        logger.warning("Failed to generate presigned URL for %s: %s", s3_key, e)
+                if s3_key and item.get("status") == "completed":
+                    import re
+                    filename = s3_key.split("/")[-1]
+                    display_name = filename
+                    file_id = result_data.get("file_id", "")
+                    if not file_id:
+                        # Extract file_id from s3_key: {file_id}-{filename}
+                        name_part = s3_key.split("/")[-1]
+                        match = re.match(r'^([0-9a-f]{8})-(.+)$', name_part)
+                        if match:
+                            file_id = match.group(1)
+                            display_name = match.group(2)
+                        elif re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-', name_part):
+                            file_id = name_part[:36]
+                            display_name = name_part[37:]
+                    else:
+                        if filename.startswith(file_id):
+                            display_name = filename[len(file_id)+1:]
+                    job["file_id"] = file_id
+                    job["filename"] = display_name
+                    job["download_link"] = f"[📄 {display_name}](file://{file_id})"
 
                 jobs.append(job)
 

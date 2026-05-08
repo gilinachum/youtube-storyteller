@@ -45,10 +45,31 @@ async function authHeaders(extra: Record<string, string> = {}): Promise<Record<s
   return headers
 }
 
+/** Detect CFS auth redirect HTML and reload if needed. */
+function reloadIfCfsRedirect(text: string): void {
+  if (text.includes('cfs-handler') || text.includes('Redirecting you for Auth')) {
+    window.location.reload()
+    throw new Error('Session expired — re-authenticating')
+  }
+}
+
+/** Parse JSON response safely — if CFS returns an HTML auth redirect, reload the page. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function parseJsonOrReauth(res: Response): Promise<any> {
+  const contentType = res.headers.get('content-type') || ''
+  if (contentType.includes('text/html') || (!contentType.includes('application/json') && res.status === 200)) {
+    const text = await res.text()
+    reloadIfCfsRedirect(text)
+    // Not CFS — try parsing as JSON anyway (some endpoints don't set content-type)
+    try { return JSON.parse(text) } catch { throw new Error(text || `Unexpected response (${res.status})`) }
+  }
+  return res.json()
+}
+
 export async function listSessions(): Promise<Session[]> {
   const headers = await authHeaders()
   const res = await fetch(`${API_BASE}/sessions`, { headers })
-  const data = await res.json()
+  const data = await parseJsonOrReauth(res)
   if (!res.ok) throw new Error(data.error || 'Failed to load sessions')
   return data.sessions || []
 }
@@ -58,14 +79,14 @@ export async function deleteSession(sessionId: string): Promise<void> {
   const res = await fetch(`${API_BASE}/sessions/${sessionId}`, {
     method: 'DELETE', headers,
   })
-  const data = await res.json()
+  const data = await parseJsonOrReauth(res)
   if (!res.ok) throw new Error(data.error || 'Failed to delete session')
 }
 
 export async function getSessionMessages(sessionId: string): Promise<{ messages: Message[]; files: FileRecord[]; shared_with: string[] }> {
   const headers = await authHeaders()
   const res = await fetch(`${API_BASE}/sessions/${sessionId}`, { headers })
-  const data = await res.json()
+  const data = await parseJsonOrReauth(res)
   if (!res.ok) throw new Error(data.error || 'Failed to load session')
   return {
     messages: data.messages || [],
@@ -80,14 +101,14 @@ export async function shareSession(sessionId: string, shareWith: string): Promis
     method: 'POST', headers,
     body: JSON.stringify({ share_with: shareWith }),
   })
-  const data = await res.json()
+  const data = await parseJsonOrReauth(res)
   if (!res.ok) throw new Error(data.error || 'Share failed')
 }
 
 export async function getFileDownloadUrl(sessionId: string, fileId: string): Promise<string> {
   const headers = await authHeaders()
   const res = await fetch(`${API_BASE}/sessions/${sessionId}/files/${fileId}`, { headers })
-  const data = await res.json()
+  const data = await parseJsonOrReauth(res)
   if (!res.ok) throw new Error(data.error || 'Download failed')
   return data.download_url
 }
@@ -100,7 +121,7 @@ export async function requestUploadUrl(
     method: 'POST', headers,
     body: JSON.stringify({ session_id: sessionId, filename, content_type: contentType }),
   })
-  const data = await res.json()
+  const data = await parseJsonOrReauth(res)
   if (!res.ok) throw new Error(data.error || 'Upload request failed')
   return data
 }
@@ -149,6 +170,7 @@ export async function streamChat(opts: StreamChatOptions): Promise<void> {
 
     if (!res.ok) {
       const errBody = await res.text()
+      reloadIfCfsRedirect(errBody)
       throw new Error(`Stream request failed (${res.status}): ${errBody}`)
     }
     if (!res.body) {
@@ -189,7 +211,7 @@ export async function pollJobs(
     { headers }
   )
   if (!res.ok) throw new Error(`Poll failed (${res.status})`)
-  return res.json()
+  return parseJsonOrReauth(res)
 }
 
 export async function transcribeAudio(audioBlob: Blob, sessionId: string): Promise<{ text: string; language: string }> {
@@ -209,10 +231,13 @@ export async function transcribeAudio(audioBlob: Blob, sessionId: string): Promi
   })
 
   if (!startRes.ok) {
-    const err = await startRes.json().catch(() => ({ error: 'Transcription failed' }))
+    const err = await parseJsonOrReauth(startRes).catch((e: Error) => {
+      if (e.message.includes('re-authenticating')) throw e
+      return { error: 'Transcription failed' }
+    })
     throw new Error(err.error || 'Failed to start transcription')
   }
-  const { job_name } = await startRes.json()
+  const { job_name } = await parseJsonOrReauth(startRes)
 
   const maxAttempts = 60
   for (let i = 0; i < maxAttempts; i++) {
@@ -220,7 +245,7 @@ export async function transcribeAudio(audioBlob: Blob, sessionId: string): Promi
     const pollHeaders = await authHeaders()
     const pollRes = await fetch(`${API_BASE}/transcribe/${encodeURIComponent(job_name)}`, { headers: pollHeaders })
     if (!pollRes.ok) continue
-    const result = await pollRes.json()
+    const result = await parseJsonOrReauth(pollRes)
     if (result.status === 'COMPLETED') return { text: result.text, language: result.language }
     if (result.status === 'FAILED') throw new Error(result.error || 'Transcription failed')
   }

@@ -1,12 +1,37 @@
 """StoryTeller CDK app entrypoint.
 
-Usage:
-    cdk deploy --all --context stage=dev    # us-west-2, Cognito auth
-    cdk deploy --all --context stage=prod   # us-east-1, Federate auth (overlay)
+Usage (via deploy script only):
+    scripts/deploy.sh dev
+    scripts/deploy.sh prod
+
+Direct `cdk deploy` is blocked — use the deploy script which handles
+AgentCore, JWT auth restore, CFS protection, and frontend deployment.
 """
 import os
+import sys
 from pathlib import Path
 import aws_cdk as cdk
+
+# Guard: prevent direct `cdk deploy` without the deploy script
+if os.environ.get("STORYTELLER_DEPLOY_SCRIPT") != "1":
+    print("\n" + "=" * 60)
+    print("❌ ERROR: Do not run `cdk deploy` directly!")
+    print("=" * 60)
+    print("")
+    print("Use the deploy script instead:")
+    print("  scripts/deploy.sh dev")
+    print("  scripts/deploy.sh prod")
+    print("")
+    print("Why? The deploy script handles:")
+    print("  • AgentCore agent deployment")
+    print("  • JWT auth restore (CDK resets TrustedKeyGroups)")
+    print("  • CFS/Midway protection re-application")
+    print("  • Frontend build + S3 sync + CloudFront invalidation")
+    print("")
+    print("If you REALLY need bare CDK (e.g. synth/diff):")
+    print("  STORYTELLER_DEPLOY_SCRIPT=1 cdk synth --context stage=dev")
+    print("=" * 60 + "\n")
+    sys.exit(1)
 from stacks.data_stack import DataStack
 from stacks.api_stack import ApiStack
 from stacks.frontend_stack import FrontendStack

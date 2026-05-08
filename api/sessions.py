@@ -3,6 +3,7 @@ import json
 import os
 import logging
 import boto3
+from botocore.config import Config
 from boto3.dynamodb.conditions import Key
 
 try:
@@ -19,7 +20,8 @@ UPLOAD_BUCKET = os.environ.get("UPLOAD_BUCKET", "")
 AGENTCORE_MEMORY_ID = os.environ.get("AGENTCORE_MEMORY_ID", "")
 
 dynamodb = boto3.resource("dynamodb")
-s3 = boto3.client("s3")
+REGION = os.environ.get("AWS_REGION", os.environ.get("AWS_DEFAULT_REGION", "us-east-1"))
+s3 = boto3.client("s3", region_name=REGION, config=Config(signature_version="s3v4"))
 
 
 def handler(event, context):

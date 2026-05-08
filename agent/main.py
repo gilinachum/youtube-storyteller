@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from strands import Agent
 from strands.models import BedrockModel
+from strands import AgentSkills
 
 from agent.system_prompt import build_system_prompt
 from agent.tools import (
@@ -115,6 +116,10 @@ def create_agent(email: str = "", session_id: str = "") -> Agent:
             logger.warning("Failed to initialize AgentCore Memory session manager: %s", e)
             session_manager = None
 
+    # Knowledge skills (progressive disclosure — loaded on-demand by agent)
+    knowledge_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "knowledge")
+    skills_plugin = AgentSkills(skills=knowledge_dir)
+
     agent = Agent(
         model=model,
         system_prompt=system_prompt,
@@ -131,6 +136,7 @@ def create_agent(email: str = "", session_id: str = "") -> Agent:
             research_tool,
             thumbnail_tool,
         ],
+        plugins=[skills_plugin],
         session_manager=session_manager,
     )
 

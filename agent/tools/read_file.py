@@ -71,26 +71,32 @@ def make_read_file_tool(session_id: str, email: str):
             if truncated:
                 text = text[:MAX_CHARS]
 
-            # Generate a presigned download URL (1 hour expiry)
-            try:
-                download_url = s3.generate_presigned_url(
-                    "get_object",
-                    Params={
-                        "Bucket": UPLOAD_BUCKET,
-                        "Key": s3_key,
-                        "ResponseContentDisposition": f'attachment; filename="{s3_key.split("/")[-1]}"',
-                    },
-                    ExpiresIn=3600,
-                )
-            except Exception:
-                download_url = None
+            # Provide a file:// reference for on-demand download
+            filename = s3_key.split("/")[-1]
+            # Extract file_id from key pattern: uploads/{email}/{session}/{file_id}-{filename}
+            # file_id is typically 8 hex chars (short ID)
+            file_id = ""
+            parts = s3_key.split("/")
+            if len(parts) >= 4:
+                name_part = parts[-1]
+                # Match 8-hex-char prefix: "952d2ce2-filename.txt"
+                import re
+                match = re.match(r'^([0-9a-f]{8})-(.+)$', name_part)
+                if match:
+                    file_id = match.group(1)
+                    filename = match.group(2)
+                # Also handle full UUID prefix: "952d2ce2-1234-5678-abcd-ef0123456789-filename.txt"
+                elif re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-', name_part):
+                    file_id = name_part[:36]
+                    filename = name_part[37:]
 
             return json.dumps({
                 "content": text,
-                "filename": s3_key.split("/")[-1],
+                "filename": filename,
                 "size": len(body),
                 "truncated": truncated,
-                "download_url": download_url,
+                "file_id": file_id,
+                "download_link": f"[\ud83d\udcc4 {filename}](file://{file_id})" if file_id else None,
             }, ensure_ascii=False)
 
         except s3.exceptions.NoSuchKey:

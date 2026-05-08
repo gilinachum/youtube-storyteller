@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { getFileDownloadUrl } from '../api'
@@ -181,15 +181,48 @@ function ImagePreview({ file, email, onClick }: { file: { filename: string; key:
   )
 }
 
-/** Custom markdown renderers — turns S3 presigned download links into file cards */
-const markdownComponents: Components = {
+/** Custom markdown renderers — file:// links become on-demand download cards */
+function makeMarkdownComponents(sessionId?: string): Components {
+  return {
   a({ href, children }) {
-    // Detect S3 presigned download links
+    // Detect file:// download references (on-demand presigned URL)
+    if (href && href.startsWith('file://')) {
+      const fileId = href.replace('file://', '')
+      const text = typeof children === 'string' ? children : (Array.isArray(children) ? children.join('') : '')
+      // Extract filename — strip leading emoji if present
+      const filename = text.replace(/^[\u{1F4C4}\u{1F4C1}\u{1F4CE}\u{1F4D1}]\s*/u, '') || 'document'
+      const ext = filename.split('.').pop()?.toLowerCase() || ''
+      const icon = FILE_ICON_MAP[ext] || '\ud83d\udcc1'
+
+      const handleClick = async (e: React.MouseEvent) => {
+        e.preventDefault()
+        if (!sessionId || !fileId) return
+        try {
+          const url = await getFileDownloadUrl(sessionId, fileId)
+          window.open(url, '_blank')
+        } catch (err) {
+          console.error('File download failed:', err)
+        }
+      }
+
+      return (
+        <a
+          href="#"
+          onClick={handleClick}
+          className="flex items-center gap-2 bg-white/10 hover:bg-white/15 transition-colors rounded-lg px-3 py-2 text-sm no-underline my-2 max-w-[280px] cursor-pointer"
+        >
+          <span className="text-xl flex-shrink-0">{icon}</span>
+          <span className="truncate text-white/90">{filename}</span>
+          <span className="text-white/50 mr-auto text-xs">\u2b07</span>
+        </a>
+      )
+    }
+
+    // Legacy: detect S3 presigned download links (for old messages)
     if (href && (href.includes('.s3.') || href.includes('s3.amazonaws.com')) && href.includes('X-Amz-Signature')) {
-      // Extract filename from URL path
       const urlPath = new URL(href).pathname
       const filename = decodeURIComponent(urlPath.split('/').pop() || 'document')
-        .replace(/^[a-f0-9]{8}-/, '') // strip file_id prefix
+        .replace(/^[a-f0-9]{8}-/, '')
       const ext = filename.split('.').pop()?.toLowerCase() || ''
       const icon = FILE_ICON_MAP[ext] || '\ud83d\udcc1'
 
@@ -245,6 +278,7 @@ const markdownComponents: Components = {
       </div>
     )
   },
+  }
 }
 
 interface Message {
@@ -262,12 +296,15 @@ interface Props {
   streamingContent?: string
   isStreaming?: boolean
   email?: string
+  sessionId?: string
 }
 
-export default function ChatMessages({ messages, loading, loadingText, progressLabel, streamingContent, isStreaming, email }: Props) {
+export default function ChatMessages({ messages, loading, loadingText, progressLabel, streamingContent, isStreaming, email, sessionId }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const isStickRef = useRef(true)
+
+  const markdownComponents = useMemo(() => makeMarkdownComponents(sessionId), [sessionId])
 
   // Track if user is near the bottom (within 150px)
   const handleScroll = useCallback(() => {
