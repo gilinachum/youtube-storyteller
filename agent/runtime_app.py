@@ -113,15 +113,20 @@ def _ensure_session(email: str, app_session_id: str, now: str):
         )
 
 
-def _get_or_create_agent(email: str, app_session_id: str) -> "Agent":
-    """Get an existing agent or create one and reload history."""
+def _get_or_create_agent(email: str, app_session_id: str, first_message: str = None) -> "Agent":
+    """Get an existing agent or create one and reload history.
+    
+    On cache miss (cold start), creates a new agent. If first_message is provided,
+    long-term memories are retrieved and injected into the system prompt.
+    On cache hit, returns the existing agent (memories already in prompt).
+    """
     cache_key = f"{email}:{app_session_id}"
 
     if cache_key in _agents:
         return _agents[cache_key]
 
     logger.info("Cold start for session %s", app_session_id)
-    agent = create_agent(email=email, session_id=app_session_id)
+    agent = create_agent(email=email, session_id=app_session_id, user_message=first_message)
 
     # If session manager is active, it handles history loading automatically.
     # Only fall back to manual DDB history injection if no session manager.
@@ -240,7 +245,7 @@ async def invoke(payload, context):
     now = datetime.now(timezone.utc).isoformat()
 
     # Get or create agent with history
-    agent = _get_or_create_agent(email, app_session_id)
+    agent = _get_or_create_agent(email, app_session_id, first_message=full_prompt)
 
     # Ensure session record exists
     _ensure_session(email, app_session_id, now)

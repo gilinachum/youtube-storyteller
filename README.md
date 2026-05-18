@@ -4,21 +4,13 @@ AI-powered assistant for planning engaging Hebrew YouTube videos. Built with **S
 
 ## What it does
 
-<table><tr><td>
-
-- 🔍 **Research** — real-time web search, trend analysis, and content extraction from URLs, PDFs, and PowerPoint files
-- 📝 **Plan** — structured video plans using a 7-part engagement framework (Hook → Promise → Preview → Content → Transitions → Recap → CTA)
-- 🎯 **Coach** — virality coaching, 2–3 framing angles per topic, content level tagging (L100–L400), automatic series split for 8+ min content
-- 🎙️ **Voice** — record voice messages, auto-transcribed via Amazon Transcribe (Hebrew + English)
-- 🎨 **Thumbnails** — AI-generated YouTube thumbnails (1280×720) via Gemini; upload personal photos, iterate conversationally
-- 💬 **Sessions** — persistent chat history, session sharing with collaborators, Hebrew auto-naming
-- 📄 **Export** — download video plans as markdown documents
-
-</td><td align="center">
-
-<img src="img/github-repo-qr.png" width="320" alt="GitHub repo QR code" />
-
-</td></tr></table>
+- 🔍 **Research** — web search, trend analysis, content extraction from URLs/PDFs
+- 📝 **Plan** — structured video plans with engagement-optimized hooks, pacing, and CTAs
+- 🎯 **Coach** — virality coaching, topic framing, retention optimization
+- 🎙️ **Voice** — record voice messages, auto-transcribed to text
+- 🎨 **Thumbnails** — AI-generated YouTube thumbnails with iterative design (Gemini)
+- 📺 **Video Analysis** — watch and analyze existing YouTube videos to inform planning (Gemini)
+- 📄 **Export** — download plans as markdown documents
 
 ## Documentation
 
@@ -29,6 +21,7 @@ AI-powered assistant for planning engaging Hebrew YouTube videos. Built with **S
 | [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) | All functional requirements (current + planned) |
 | [docs/TECHNICAL-DESIGN.md](docs/TECHNICAL-DESIGN.md) | Architecture, data model, sub-agents, streaming |
 | [docs/LONG-RUNNING-JOBS.md](docs/LONG-RUNNING-JOBS.md) | Generic jobs system for async work (transcription, video analysis) — three-Lambda architecture with frontend polling |
+| [docs/DESIGN-YOUTUBE-VIDEO-ANALYSIS.md](docs/DESIGN-YOUTUBE-VIDEO-ANALYSIS.md) | YouTube video analysis feature design |
 
 ## Architecture
 
@@ -40,6 +33,7 @@ CloudFront → S3 (React SPA)
                 └→ AgentCore Runtime (Strands Agent)
                         │
                         ├── Research sub-agent (web + trends)
+                        ├── YouTube video analyzer (Gemini 3.1 Flash)
                         ├── Tavily, Perplexity, Firecrawl
                         ├── PDF/PPTX extraction
                         └── Thumbnail sub-agent (planned, Gemini)

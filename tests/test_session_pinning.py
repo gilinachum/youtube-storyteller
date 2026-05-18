@@ -112,6 +112,13 @@ class TestEnsureSession:
                 {"AttributeName": "email", "AttributeType": "S"},
                 {"AttributeName": "session_id", "AttributeType": "S"},
             ],
+            GlobalSecondaryIndexes=[
+                {
+                    "IndexName": "session-id-index",
+                    "KeySchema": [{"AttributeName": "session_id", "KeyType": "HASH"}],
+                    "Projection": {"ProjectionType": "ALL"},
+                },
+            ],
             BillingMode="PAY_PER_REQUEST",
         )
 
@@ -198,7 +205,7 @@ class TestGetOrCreateAgent:
 
         agent = _get_or_create_agent("user@test.com", "sess-1")
         assert agent == mock_agent
-        mock_create.assert_called_once_with(email="user@test.com", session_id="sess-1")
+        mock_create.assert_called_once_with(email="user@test.com", session_id="sess-1", user_message=None)
 
     @patch("agent.runtime_app.create_agent")
     def test_cache_hit_returns_same_agent(self, mock_create):
@@ -338,6 +345,13 @@ class TestSessionPinningE2E:
             AttributeDefinitions=[
                 {"AttributeName": "email", "AttributeType": "S"},
                 {"AttributeName": "session_id", "AttributeType": "S"},
+            ],
+            GlobalSecondaryIndexes=[
+                {
+                    "IndexName": "session-id-index",
+                    "KeySchema": [{"AttributeName": "session_id", "KeyType": "HASH"}],
+                    "Projection": {"ProjectionType": "ALL"},
+                },
             ],
             BillingMode="PAY_PER_REQUEST",
         )

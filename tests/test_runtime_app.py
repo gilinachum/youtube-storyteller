@@ -204,7 +204,7 @@ class TestAgentCache:
             mock_create.return_value = mock_agent
 
             agent = rt._get_or_create_agent("a@b.com", "s1")
-            mock_create.assert_called_once_with(email="a@b.com", session_id="s1")
+            mock_create.assert_called_once_with(email="a@b.com", session_id="s1", user_message=None)
             assert "a@b.com:s1" in rt._agents
 
             # Second call should use cache

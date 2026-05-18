@@ -77,7 +77,12 @@ export function signOut(): void {
   } catch { /* ignore */ }
 }
 
-/** Get a valid ID token (refreshes if needed). */
+/** Minimum remaining lifetime (ms) before we force-refresh the token.
+ *  AgentCore rejects tokens expiring within 60s, so we refresh at 5min
+ *  to give streaming requests plenty of headroom. */
+const REFRESH_BUFFER_MS = 5 * 60 * 1000
+
+/** Get a valid ID token, pre-emptively refreshing if close to expiry. */
 export function getIdToken(): Promise<string | null> {
   return new Promise((resolve) => {
     try {
@@ -85,7 +90,22 @@ export function getIdToken(): Promise<string | null> {
       if (!user) return resolve(null)
       user.getSession((err: Error | null, session: CognitoUserSession | null) => {
         if (err || !session || !session.isValid()) return resolve(null)
-        resolve(session.getIdToken().getJwtToken())
+
+        const exp = session.getIdToken().getExpiration() * 1000 // ms
+        if (exp - Date.now() > REFRESH_BUFFER_MS) {
+          // Token has plenty of life left — use it as-is
+          return resolve(session.getIdToken().getJwtToken())
+        }
+
+        // Token expires soon — force refresh via the refresh token
+        const refreshToken = session.getRefreshToken()
+        user.refreshSession(refreshToken, (refreshErr: Error | null, freshSession: CognitoUserSession | null) => {
+          if (refreshErr || !freshSession || !freshSession.isValid()) {
+            // Refresh failed — return the (still technically valid) old token
+            return resolve(session.getIdToken().getJwtToken())
+          }
+          resolve(freshSession.getIdToken().getJwtToken())
+        })
       })
     } catch {
       resolve(null)

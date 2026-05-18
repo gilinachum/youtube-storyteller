@@ -64,6 +64,13 @@ def _create_sessions_table():
             {"AttributeName": "email", "AttributeType": "S"},
             {"AttributeName": "session_id", "AttributeType": "S"},
         ],
+        GlobalSecondaryIndexes=[
+            {
+                "IndexName": "session-id-index",
+                "KeySchema": [{"AttributeName": "session_id", "KeyType": "HASH"}],
+                "Projection": {"ProjectionType": "ALL"},
+            },
+        ],
         BillingMode="PAY_PER_REQUEST",
     )
 
@@ -241,7 +248,7 @@ class TestSessionsGet:
 
     @mock_aws
     def test_get_session_not_found(self):
-        """Get a session that doesn't exist returns empty messages."""
+        """Get a session that doesn't exist returns 404."""
         _create_sessions_table()
         _create_messages_table()
 
@@ -258,10 +265,9 @@ class TestSessionsGet:
         }):
             response = handler(event, {})
 
-        assert response["statusCode"] == 200
+        assert response["statusCode"] == 404
         body = json.loads(response["body"])
-        assert body["session_id"] == "nonexistent"
-        assert body["messages"] == []
+        assert "error" in body
 
 
 # =============================================================================

@@ -12,8 +12,16 @@ import sys
 from pathlib import Path
 import aws_cdk as cdk
 
-# Guard: prevent direct `cdk deploy` without the deploy script
-if os.environ.get("STORYTELLER_DEPLOY_SCRIPT") != "1":
+# Guard: prevent direct `cdk deploy` without the deploy script.
+# CDK calls `python3 app.py` for ALL subcommands (synth, diff, deploy, etc.)
+# so we can't detect which one. Instead:
+#   - deploy.sh sets STORYTELLER_DEPLOY_SCRIPT=1 (allows everything)
+#   - For read-only (synth/diff): set STORYTELLER_CDK_READONLY=1
+#   - Neither set = block (prevents accidental `cdk deploy`)
+_has_deploy_bypass = os.environ.get("STORYTELLER_DEPLOY_SCRIPT") == "1"
+_has_readonly_bypass = os.environ.get("STORYTELLER_CDK_READONLY") == "1"
+
+if not _has_deploy_bypass and not _has_readonly_bypass:
     print("\n" + "=" * 60)
     print("❌ ERROR: Do not run `cdk deploy` directly!")
     print("=" * 60)
@@ -28,8 +36,9 @@ if os.environ.get("STORYTELLER_DEPLOY_SCRIPT") != "1":
     print("  • CFS/Midway protection re-application")
     print("  • Frontend build + S3 sync + CloudFront invalidation")
     print("")
-    print("If you REALLY need bare CDK (e.g. synth/diff):")
-    print("  STORYTELLER_DEPLOY_SCRIPT=1 cdk synth --context stage=dev")
+    print("For read-only operations (synth/diff):")
+    print("  STORYTELLER_CDK_READONLY=1 cdk synth --context stage=dev")
+    print("  STORYTELLER_CDK_READONLY=1 cdk diff --context stage=dev")
     print("=" * 60 + "\n")
     sys.exit(1)
 from stacks.data_stack import DataStack
@@ -91,6 +100,7 @@ frontend = FrontendStack(app, f"{sp}Frontend" if sp[0].isupper() else f"{cfg['pr
     uploads_bucket_arn=data.uploads_bucket.bucket_arn,
     api=api.api,
     prefix=cfg["prefix"],
+    cfs_key_group_id=os.environ.get("CFS_KEY_GROUP_ID", ""),
     env=env,
 )
 frontend.add_dependency(api)

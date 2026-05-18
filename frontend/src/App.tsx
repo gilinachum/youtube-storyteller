@@ -119,7 +119,10 @@ export default function App() {
 
   // Authenticated — render chat
   if (auth) {
-    return <Chat email={auth.email} onLogout={handleLogout} />
+    // Parse /s/{id} from URL for direct session links
+    const pathMatch = window.location.pathname.match(/^\/s\/([\w-]+)/)
+    const initialSessionId = pathMatch ? pathMatch[1] : undefined
+    return <Chat email={auth.email} onLogout={handleLogout} initialSessionId={initialSessionId} />
   }
 
   // Federate: waiting for redirect (shouldn't see this long)

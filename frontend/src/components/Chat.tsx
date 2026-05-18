@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { streamChat, listSessions, getSessionMessages, uploadFile, shareSession, getFileDownloadUrl, transcribeAudio, deleteSession } from '../api'
+import { streamChat, listSessions, getSessionMessages, uploadFile, shareSession, getFileDownloadUrl, transcribeAudio, deleteSession, setSessionVisibility, unshareSession } from '../api'
 import { useJobPolling } from '../hooks/useJobPolling'
 import type { Session, FileRecord } from '../api'
 import ChatMessages from './ChatMessages'
@@ -19,30 +19,37 @@ interface Message {
 interface Props {
   email: string
   onLogout: () => void
+  initialSessionId?: string
 }
 
 const WELCOME_MESSAGE: Message = {
   id: 'welcome',
   role: 'assistant',
-  content: `אני StoryTeller — העוזר שלך לתכנון סרטוני YouTube בעברית.
+  content: `אני StoryTeller 🎬 — מומחה תכנון תוכן טכנולוגי.
 
-**מה אני יכול לעשות בשבילך?**
+**מה אני יודע לעשות:**
 
-🔗 **לנתח חומר גלם** — תן לי URL, PDF, או PPTX ואני אהפוך אותו לתכנית סרטון
+✍️ **לתכנן תוכן** — סרטוני YouTube, הרצאות, ראיונות, וורקשופים
 
-📈 **לחקור טרנדים** — אגלה מה עובד ביוטיוב עכשיו בנושא שלך
+📺 **לצפות בסרטוני YouTube קיימים** — תן לי לינק ואנתח מבנה, סגנון, קהל, וזוויות תוכן
 
-✍️ **לכתוב אאוטליין או סקריפט מלא** — בעברית, מותאם לשימור צופים מקסימלי
+🔍 **לחקור נושאים לעומק** — חיפוש אינטרנט, טרנדים, וניתוח סרטונים מתחרים
 
-🎨 **לעצב תמונת טאמבנייל** — תמונות מעוצבות לסרטון עם עיצוב איטרטיבי
+🎨 **לעצב באנר או טאמבנייל** — עיצוב איטרטיבי כולל תמונת הפרפיל שלך וסגנון מותאם
 
-🎯 **לייעץ על כותרות ו-SEO** — כדי שהסרטון יגיע לכמה שיותר אנשים
+📄 **לעבד חומרי גלם** — PDF, מצגות, הקלטות וידיאו/אודיו, URLs
 
-על מה הסרטון הבא שלך? 🚀`,
+📋 **לייצא מסמך להורדה** — מתכנון בראשי פרקים ועד לסקריפט מושלם
+
+🔲 **לייצר QR Code** — תן לי URL ואייצר קוד QR להורדה ושיתוף
+
+⚠️ **שים לב:** השתמש ב-StoryTeller עם מידע פומבי בלבד. אין להזין מידע סודי, פנימי, או נתוני לקוחות.
+
+מה בראש שלך? 🚀`,
   timestamp: Date.now(),
 }
 
-export default function Chat({ email, onLogout }: Props) {
+export default function Chat({ email, onLogout, initialSessionId }: Props) {
   const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE])
   const [sessions, setSessions] = useState<Session[]>([])
   const [currentSessionId, setCurrentSessionId] = useState<string>(() => {
@@ -59,6 +66,8 @@ export default function Chat({ email, onLogout }: Props) {
   const [showFiles, setShowFiles] = useState(false)
   const [sharedWith, setSharedWith] = useState<string[]>([])
   const [isSharedSession, setIsSharedSession] = useState(false)
+  const [access, setAccess] = useState<'owner' | 'collaborator' | 'viewer'>('owner')
+  const [visibility, setVisibility] = useState<'private' | 'public'>('private')
   const abortControllerRef = useRef<AbortController | null>(null)
   // Stable ref so handleSend's onDone closure can call checkNow without stale captures
   const checkNowRef = useRef<() => Promise<void>>(() => Promise.resolve())
@@ -70,29 +79,69 @@ export default function Chat({ email, onLogout }: Props) {
     localStorage.setItem(`storyteller-last-session-${email}`, currentSessionId)
   }, [email, currentSessionId])
 
-  // Load sessions on mount + restore last session
+  // URL routing: update URL on session changes
+  const updateUrl = useCallback((sessionId: string | null) => {
+    if (sessionId) {
+      window.history.pushState({}, '', '/s/' + sessionId)
+    } else {
+      window.history.pushState({}, '', '/')
+    }
+  }, [])
+
+  // Refs for popstate — avoids stale closure over currentSessionId/callbacks
+  const currentSessionIdRef = useRef(currentSessionId)
+  useEffect(() => { currentSessionIdRef.current = currentSessionId }, [currentSessionId])
+  const handleSelectSessionRef = useRef<(sid: string) => void>(() => {})
+  const handleNewChatRef = useRef<() => void>(() => {})
+
+  // Listen to popstate for browser back/forward
+  useEffect(() => {
+    const handlePopState = () => {
+      const match = window.location.pathname.match(/^\/s\/([\w-]+)/)
+      if (match) {
+        const sid = match[1]
+        if (sid !== currentSessionIdRef.current) {
+          handleSelectSessionRef.current(sid)
+        }
+      } else {
+        handleNewChatRef.current()
+      }
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])  // stable — uses refs
+
+  // Load sessions on mount + restore last session or initialSessionId
   useEffect(() => {
     listSessions().then(sessions => {
       setSessions(sessions)
-      // If we have a saved session ID, load its messages
-      const savedId = localStorage.getItem(`storyteller-last-session-${email}`)
-      if (savedId && sessions.some(s => s.session_id === savedId)) {
-        getSessionMessages(savedId)
-          .then(data => {
-            if (data.messages && data.messages.length > 0) {
-              const loaded: Message[] = data.messages.map((m: any, i: number) => ({
-                id: `restored-${i}`,
-                role: m.role as 'user' | 'assistant',
-                content: m.content,
-                timestamp: new Date(m.timestamp).getTime(),
-              }))
-              setMessages([{ ...WELCOME_MESSAGE, id: 'welcome', timestamp: 0 }, ...loaded])
-              setCurrentSessionId(savedId)
-              if (data.files) setSessionFiles(data.files)
-              if (data.shared_with) setSharedWith(data.shared_with)
-            }
-          })
-          .catch(console.error)
+      // Priority: initialSessionId (from URL) > saved session
+      const targetId = initialSessionId || localStorage.getItem(`storyteller-last-session-${email}`)
+      if (targetId) {
+        // For initialSessionId, always try to load (might be a public session not in our list)
+        const inList = sessions.some(s => s.session_id === targetId)
+        if (inList || initialSessionId) {
+          getSessionMessages(targetId)
+            .then(data => {
+              if (data.messages && data.messages.length > 0) {
+                const loaded: Message[] = data.messages.map((m: any, i: number) => ({
+                  id: `restored-${i}`,
+                  role: m.role as 'user' | 'assistant',
+                  content: m.content,
+                  timestamp: new Date(m.timestamp).getTime(),
+                }))
+                setMessages([{ ...WELCOME_MESSAGE, id: 'welcome', timestamp: 0 }, ...loaded])
+                setCurrentSessionId(targetId)
+                if (data.files) setSessionFiles(data.files)
+                if (data.shared_with) setSharedWith(data.shared_with)
+                if (data.access) setAccess(data.access)
+                if (data.visibility) setVisibility(data.visibility)
+                // Update URL to reflect the session
+                window.history.replaceState({}, '', '/s/' + targetId)
+              }
+            })
+            .catch(console.error)
+        }
       }
     }).catch(console.error)
   }, [email])
@@ -294,7 +343,10 @@ export default function Chat({ email, onLogout }: Props) {
     setSharedWith([])
     setIsSharedSession(false)
     setShowFiles(false)
-  }, [])
+    setAccess('owner')
+    setVisibility('private')
+    updateUrl(null)
+  }, [updateUrl])
 
   const handleSelectSession = useCallback(async (sessionId: string) => {
     abortControllerRef.current?.abort()
@@ -304,22 +356,29 @@ export default function Chat({ email, onLogout }: Props) {
     setProgressLabel('')
     setCurrentSessionId(sessionId)
     setShowFiles(false)
+    updateUrl(sessionId)
     try {
-      const { messages: msgs, files, shared_with } = await getSessionMessages(sessionId)
-      setMessages(msgs.map(m => ({
+      const data = await getSessionMessages(sessionId)
+      setMessages(data.messages.map(m => ({
         id: `${m.timestamp}-${m.role}`,
         role: m.role,
         content: m.content,
         timestamp: new Date(m.timestamp).getTime(),
       })))
-      setSessionFiles(files)
-      setSharedWith(shared_with)
+      setSessionFiles(data.files)
+      setSharedWith(data.shared_with)
+      if (data.access) setAccess(data.access)
+      if (data.visibility) setVisibility(data.visibility)
       const session = sessions.find(s => s.session_id === sessionId)
       setIsSharedSession(session?._shared || false)
     } catch (err) {
       console.error('Failed to load session:', err)
     }
-  }, [email, sessions])
+  }, [email, sessions, updateUrl])
+
+  // Keep popstate refs current
+  useEffect(() => { handleNewChatRef.current = handleNewChat }, [handleNewChat])
+  useEffect(() => { handleSelectSessionRef.current = handleSelectSession }, [handleSelectSession])
 
   const handleUpload = useCallback(async (file: File): Promise<UploadedFile | null> => {
     try {
@@ -377,6 +436,26 @@ export default function Chat({ email, onLogout }: Props) {
       throw err
     }
   }, [email, currentSessionId])
+
+  const handleVisibilityChange = useCallback(async (newVisibility: 'private' | 'public') => {
+    try {
+      await setSessionVisibility(currentSessionId, newVisibility)
+      setVisibility(newVisibility)
+    } catch (err) {
+      console.error('Visibility change failed:', err)
+      throw err
+    }
+  }, [currentSessionId])
+
+  const handleUnshare = useCallback(async (emailToRemove: string) => {
+    try {
+      await unshareSession(currentSessionId, emailToRemove)
+      setSharedWith(prev => prev.filter(e => e !== emailToRemove))
+    } catch (err) {
+      console.error('Unshare failed:', err)
+      throw err
+    }
+  }, [currentSessionId])
 
   const handleFileDownload = useCallback(async (fileId: string) => {
     try {
@@ -449,6 +528,11 @@ export default function Chat({ email, onLogout }: Props) {
                   משותפת
                 </span>
               )}
+              {access === 'viewer' && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-yellow-900/50 text-yellow-300 text-xs">
+                  📖 צפייה
+                </span>
+              )}
             </div>
             <p className="text-xs text-gray-500">עוזר תכנון סרטוני YouTube</p>
           </div>
@@ -472,7 +556,7 @@ export default function Chat({ email, onLogout }: Props) {
 
             <button
               onClick={() => setShowShareModal(true)}
-              className="p-2 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-gray-200 transition-colors"
+              className={`p-2 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-gray-200 transition-colors ${access === 'viewer' ? 'hidden' : ''}`}
               title="שתף שיחה"
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
@@ -497,14 +581,24 @@ export default function Chat({ email, onLogout }: Props) {
           email={email}
           sessionId={currentSessionId}
         />
-        <ChatInput onSend={handleSend} disabled={loading} onUpload={handleUpload} onTranscribe={handleTranscribe} />
+        {access === 'viewer' ? (
+          <div className="border-t border-gray-800 px-4 py-3 text-center text-sm text-yellow-400 bg-gray-900/50">
+            📖 שיחה לקריאה בלבד
+          </div>
+        ) : (
+          <ChatInput onSend={handleSend} disabled={loading} onUpload={handleUpload} onTranscribe={handleTranscribe} />
+        )}
       </div>
 
-      {showShareModal && (
+      {showShareModal && access !== 'viewer' && (
         <ShareModal
           onShare={handleShare}
           onClose={() => setShowShareModal(false)}
           sharedWith={sharedWith}
+          visibility={visibility}
+          onVisibilityChange={handleVisibilityChange}
+          onUnshare={handleUnshare}
+          sessionId={currentSessionId}
         />
       )}
     </div>

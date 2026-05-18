@@ -1,11 +1,12 @@
 """Frontend stack — S3 + CloudFront for the React SPA + API origin + media.
 
-CFS (Midway) protection is applied to the default behavior, /api/*, and
-/media/* by a separate script (infra-private/setup_midway.py) — it adds
-TrustedKeyGroups to these behaviors after the stack is deployed.
+CFS (Midway) protection is managed by CDK via the cfs_key_group_id parameter.
+When provided (prod), TrustedKeyGroups are added to all behaviors except /error/*
+and /js/cfs-handler.js (which serve the CFS auth page). When absent (dev),
+all behaviors are open.
 
-The /error/* and /js/cfs-handler.js behaviors stay unrestricted (that's
-what serves the CFS auth page itself).
+The key group itself, KMS key, RSA key pair, secret, DNS, and CFS portal
+onboarding are handled by a one-time setup script (infra-private/setup_midway.py).
 """
 from __future__ import annotations
 import os
@@ -30,8 +31,20 @@ class FrontendStack(Stack):
                  uploads_bucket_arn: str = "",
                  api: apigw.RestApi | None = None,
                  prefix: str = "storyteller",
+                 cfs_key_group_id: str = "",
                  **kwargs):
         super().__init__(scope, id, **kwargs)
+
+        # ── CFS (Midway) protection via TrustedKeyGroups ─────────────────────
+        # If cfs_key_group_id is provided (prod), import the key group and attach
+        # it to protected behaviors. Dev deploys without it → no CFS.
+        cfs_key_group = None
+        if cfs_key_group_id:
+            cfs_key_group = cf.KeyGroup.from_key_group_id(
+                self, "CfsKeyGroup", cfs_key_group_id
+            )
+            # Behaviors that must remain unprotected (CFS auth pages)
+            # are added separately without trusted_key_groups.
 
         # ── Frontend bucket (private — served via CloudFront only) ───────────
         bucket = s3.Bucket(
@@ -95,8 +108,7 @@ function handler(event) {
 
         additional_behaviors = {}
 
-        # /media/* — served from uploads bucket. CFS protects it via TrustedKeyGroups
-        # (added out-of-band by setup_midway.py). No Lambda/Cognito auth anymore.
+        # /media/* — served from uploads bucket. CFS protects it via TrustedKeyGroups.
         if uploads_bucket_ref and media_oac:
             additional_behaviors["/media/*"] = cf.BehaviorOptions(
                 origin=origins.S3BucketOrigin.with_origin_access_control(
@@ -105,6 +117,7 @@ function handler(event) {
                 ),
                 viewer_protocol_policy=cf.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
                 cache_policy=cf.CachePolicy.CACHING_OPTIMIZED,
+                trusted_key_groups=[cfs_key_group] if cfs_key_group else None,
             )
 
         # /api/* — proxies to API Gateway. CFS cookies gate it at the edge;
@@ -118,6 +131,7 @@ function handler(event) {
                 cache_policy=cf.CachePolicy.CACHING_DISABLED,
                 origin_request_policy=cf.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
                 allowed_methods=cf.AllowedMethods.ALLOW_ALL,
+                trusted_key_groups=[cfs_key_group] if cfs_key_group else None,
                 function_associations=[
                     cf.FunctionAssociation(
                         function=api_rewrite,
@@ -127,6 +141,25 @@ function handler(event) {
             )
 
         # ── CloudFront distribution ──────────────────────────────────────────
+        # ── CFS-unprotected behaviors (error pages + CFS handler) ───────────
+        # These must be accessible without signed cookies so CFS can
+        # serve its auth redirect page.
+        if cfs_key_group:
+            s3_origin = origins.S3BucketOrigin.with_origin_access_control(
+                bucket, origin_access_control=oac,
+            )
+            additional_behaviors["/error/*"] = cf.BehaviorOptions(
+                origin=s3_origin,
+                viewer_protocol_policy=cf.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+                cache_policy=cf.CachePolicy.CACHING_OPTIMIZED,
+            )
+            additional_behaviors["/js/cfs-handler.js"] = cf.BehaviorOptions(
+                origin=s3_origin,
+                viewer_protocol_policy=cf.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+                cache_policy=cf.CachePolicy.CACHING_OPTIMIZED,
+            )
+
+        # ── CloudFront distribution ────────────────────────────────────────
         distribution = cf.Distribution(
             self, "Distribution",
             comment="StoryTeller frontend",
@@ -136,6 +169,7 @@ function handler(event) {
                 ),
                 viewer_protocol_policy=cf.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
                 cache_policy=cf.CachePolicy.CACHING_OPTIMIZED,
+                trusted_key_groups=[cfs_key_group] if cfs_key_group else None,
                 function_associations=[
                     cf.FunctionAssociation(
                         function=spa_rewrite,

@@ -119,6 +119,7 @@ Loaded at session start; followed for every code change, bug fix, or feature.
 - Same names in dev (us-west-2) and prod (us-east-1) — different regions, no collision.
 - No `MESSAGES_TABLE` / `SESSIONS_TABLE` env vars needed for AgentCore — code defaults match.
 - Always paginate Scans (1MB limit per call).
+- **⚠️ NEVER use `scan(Limit=N)` to find a specific item.** `Limit` caps items *scanned* (not matched). With filter expressions, a `Limit=5` scan may read 5 random items, match zero, and return empty — even if the target exists. Use a GSI query or full scan with pagination instead.
 - Reserved words in expressions → use `ExpressionAttributeNames`.
 
 ### CDK / CloudFormation

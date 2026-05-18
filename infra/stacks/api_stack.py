@@ -138,6 +138,20 @@ class ApiStack(Stack):
                         ],
                         resources=["*"],
                     ),
+                    iam.PolicyStatement(
+                        sid="BedrockModelInvocation",
+                        actions=[
+                            "bedrock:InvokeModel",
+                            "bedrock:InvokeModelWithResponseStream",
+                            "bedrock:ApplyGuardrail",
+                            "bedrock:CountTokens",
+                        ],
+                        resources=[
+                            "arn:aws:bedrock:*::foundation-model/*",
+                            "arn:aws:bedrock:*:*:inference-profile/*",
+                            f"arn:aws:bedrock:{self.region}:{self.account}:*",
+                        ],
+                    ),
                 ],
             )
 
@@ -364,8 +378,13 @@ class ApiStack(Stack):
         session_id_res = sessions_res.add_resource("{id}")
         session_id_res.add_method("GET", apigw.LambdaIntegration(sessions_fn), **default_auth)
         session_id_res.add_method("DELETE", apigw.LambdaIntegration(sessions_fn), **default_auth)
+        session_id_res.add_method("PATCH", apigw.LambdaIntegration(sessions_fn), **default_auth)
         share_res = session_id_res.add_resource("share")
         share_res.add_method("POST", apigw.LambdaIntegration(sessions_fn), **default_auth)
+        share_email_res = share_res.add_resource("{email}")
+        share_email_res.add_method("DELETE", apigw.LambdaIntegration(sessions_fn), **default_auth)
+        visibility_res = session_id_res.add_resource("visibility")
+        visibility_res.add_method("PATCH", apigw.LambdaIntegration(sessions_fn), **default_auth)
         files_res = session_id_res.add_resource("files")
         file_id_res = files_res.add_resource("{file_id}")
         file_id_res.add_method("GET", apigw.LambdaIntegration(sessions_fn), **default_auth)

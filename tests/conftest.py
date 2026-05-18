@@ -65,6 +65,13 @@ def dynamodb_tables(aws_credentials):
                 {"AttributeName": "email", "AttributeType": "S"},
                 {"AttributeName": "session_id", "AttributeType": "S"},
             ],
+            GlobalSecondaryIndexes=[
+                {
+                    "IndexName": "session-id-index",
+                    "KeySchema": [{"AttributeName": "session_id", "KeyType": "HASH"}],
+                    "Projection": {"ProjectionType": "ALL"},
+                },
+            ],
             BillingMode="PAY_PER_REQUEST",
         )
 

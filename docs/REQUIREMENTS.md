@@ -1,6 +1,6 @@
 # StoryTeller — Functional Requirements
 
-_Version 4.0 | 2026-04-25 | Single source of truth for all features_
+_Version 4.1 | 2026-05-10 | Single source of truth for all features_
 
 ---
 
@@ -250,7 +250,112 @@ Full UUID in filename prevents guessing. Served via CloudFront with cookie auth.
 
 ---
 
-## 13. Future / Backlog
+## 13. Public Sharing & URL Routing
+
+| ID | Requirement | Status |
+|----|-------------|--------|
+| PUB-1 | URL updates to `/s/{session_id}` on session select (bookmarkable) | 🔲 Planned |
+| PUB-2 | Direct load from URL: `/s/{id}` opens that session | 🔲 Planned |
+| PUB-3 | Session `visibility` attribute: `private` (default) / `public` | 🔲 Planned |
+| PUB-4 | Owner can toggle visibility in share modal | 🔲 Planned |
+| PUB-5 | Copy shareable link button when public | 🔲 Planned |
+| PUB-6 | Public sessions: any logged-in user with link can view (read-only) | 🔲 Planned |
+| PUB-7 | Viewer sees read-only UI (no input bar, "📖 שיחה לקריאה בלבד" banner) | 🔲 Planned |
+| PUB-8 | Public sessions do NOT appear in viewer's sidebar | 🔲 Planned |
+| PUB-9 | Block chat-stream for viewer-only users | 🔲 Planned |
+| PUB-10 | Viewers can export/download session content | 🔲 Planned |
+| PUB-11 | Remove collaborator (unshare by email) | 🔲 Planned |
+| PUB-12 | `PATCH /sessions/{id}/visibility` endpoint (owner only) | 🔲 Planned |
+| PUB-13 | `DELETE /sessions/{id}/share/{email}` endpoint (owner only) | 🔲 Planned |
+| PUB-14 | GSI on session_id for direct lookups (replaces shared scan) | 🔲 Planned |
+| PUB-15 | Access field in session response: `owner` / `collaborator` / `viewer` | 🔲 Planned |
+
+---
+
+## 14. Long-Term Memory
+
+### Architecture
+
+Two-tier memory system using AgentCore Memory:
+- **Tier 1 — Long-term memory (lightweight):** Session summaries + user preferences extracted automatically from conversations. Remembers *what* was discussed in *which* session, plus persistent user knowledge.
+- **Tier 2 — On-demand detail extraction (sub-agent tool):** When exact details are needed from a past session, a one-shot sub-agent loads the original session's full conversation from short-term memory and extracts precisely the details requested.
+
+Retrieval trigger: **Option B** — do not retrieve memory on cold open. Retrieve only after the user's first message, using semantic search matched to their intent.
+
+### Memory Strategies
+
+| Strategy | Purpose | Type |
+|----------|---------|------|
+| Session Summaries | Compact recap of each session (topic, decisions, outcomes) | Built-in |
+| User Preferences | Content style, audience, thumbnail style, structural preferences | Built-in (Phase 1), Custom override (Phase 2) |
+
+### System Prompt Guidance
+
+The agent's system prompt includes instructions to:
+- Quote relevant memory when it influences a decision (e.g., "בפעם הקודמת בחרת בזווית 2 מתוך 3 — רוצה גישה דומה?")
+- Reference memory naturally in Hebrew, not as raw data dumps
+- Never fabricate memories — if unsure, say so
+
+### Use Cases
+
+#### Personalization (cross-session user knowledge)
+
+| ID | Requirement | Status |
+|----|-------------|--------|
+| MEM-1 | Remember content style preferences (e.g., L200, humor, hook-first) | 🔲 Planned |
+| MEM-2 | Remember target audience (e.g., Israeli DevOps engineers, 25-40) | 🔲 Planned |
+| MEM-3 | Remember channel facts (subscriber count, niche, posting frequency) | 🔲 Planned |
+| MEM-4 | Remember thumbnail style preferences (colors, layout, text style) | 🔲 Planned |
+
+#### Continuity (knowing what happened before)
+
+| ID | Requirement | Status |
+|----|-------------|--------|
+| MEM-5 | Recall what topics were covered in past sessions | 🔲 Planned |
+| MEM-6 | Avoid duplicate suggestions — don't propose topics the user already rejected | 🔲 Planned |
+| MEM-7 | Reference previous decisions ("last time you chose angle 2 out of 3") | 🔲 Planned |
+| MEM-8 | Continue multi-session projects ("cloud security series, this is part 3") | 🔲 Planned |
+
+#### Cross-session detail retrieval (Tier 2 — sub-agent tool)
+
+| ID | Requirement | Status |
+|----|-------------|--------|
+| MEM-9 | Reproduce thumbnail style from another session ("same design as the K8s video") | 🔲 Planned |
+| MEM-10 | Reuse script structure from a previous session ("same format as last time") | 🔲 Planned |
+| MEM-11 | Reference specific research findings from another session | 🔲 Planned |
+| MEM-12 | Reuse exported plan as template for a new video | 🔲 Planned |
+| MEM-13 | Generic detail extraction: user mentions something from a past session → agent identifies the session via long-term memory → `recall_session_details` tool loads the full conversation via short-term memory → one-shot sub-agent extracts and returns the precise details needed | 🔲 Planned |
+
+#### Agent self-improvement
+
+| ID | Requirement | Status |
+|----|-------------|--------|
+| MEM-14 | Learn which planning approaches the user approves (tables vs. narrative, 2 vs. 5 options) | 🔲 Planned |
+| MEM-15 | Learn which thumbnail prompts produce good results — reduce iteration cycles | 🔲 Planned |
+| MEM-16 | Learn which research depth the user expects (shallow scan vs. deep dive) | 🔲 Planned |
+
+### Tool: `recall_session_details`
+
+A new agent tool for on-demand cross-session detail extraction.
+
+**Flow:**
+1. User mentions something from a past session (e.g., "אותו סטייל טאמבנייל כמו בסשן של Kubernetes")
+2. Agent searches long-term memory (session summaries) to identify the relevant session ID
+3. Agent calls `recall_session_details(session_id, query)` — e.g., `query="thumbnail design details: colors, fonts, layout, Gemini prompt used, user photo"`
+4. Tool internally: loads the full session conversation from short-term memory (ListEvents), passes it to a one-shot sub-agent with the query, sub-agent extracts and returns structured details
+5. Agent uses the returned details to fulfill the user's request
+
+**Why this pattern:**
+- No need to predict and index every possible detail type upfront
+- Long-term memory stays lightweight (summaries + preferences)
+- Exact details are extracted on-demand from the raw conversation
+- Works for any detail type: thumbnails, scripts, research, decisions, prompts
+
+**Constraint:** Depends on short-term memory TTL (365 days). After expiry, raw session is gone — only the summary survives.
+
+---
+
+## 15. Future / Backlog
 
 | ID | Requirement | Priority |
 |----|-------------|----------|
@@ -261,6 +366,23 @@ Full UUID in filename prevents guessing. Served via CloudFront with cookie auth.
 | FUT-5 | Document export to PDF / Google Docs | Medium |
 | FUT-6 | Review sub-agent (quality gate before presenting plans) | Low |
 | FUT-7 | SEO sub-agent (optimize titles, descriptions, tags) | Low |
+
+---
+
+## 16. YouTube Video Analysis
+
+| ID | Requirement | Status |
+|----|-------------|--------|
+| YT-1 | Tool: analyze_youtube_video — Gemini 3.1 Flash video understanding | 🔲 Planned |
+| YT-2 | Accepts youtube.com/watch, youtu.be, youtube.com/shorts URLs | 🔲 Planned |
+| YT-3 | Returns structured JSON: summary, topics, structure, style, audience level | 🔲 Planned |
+| YT-4 | Optional focus parameter for targeted analysis | 🔲 Planned |
+| YT-5 | User-initiated: analyze video when URL is shared | 🔲 Planned |
+| YT-6 | Proactive: analyze YouTube URLs found during deep_research (top 2-3) | 🔲 Planned |
+| YT-7 | System prompt instructs agent to offer analysis when user mentions existing videos | 🔲 Planned |
+| YT-8 | Graceful errors for private/age-restricted/too-long videos | 🔲 Planned |
+| YT-9 | Uses existing GCP API key from Secrets Manager (gcp/gemini-api-key) | 🔲 Planned |
+| YT-10 | Insights presented in Hebrew, conversationally (not raw JSON dump) | 🔲 Planned |
 
 ---
 
