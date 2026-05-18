@@ -152,6 +152,29 @@ class ApiStack(Stack):
                             f"arn:aws:bedrock:{self.region}:{self.account}:*",
                         ],
                     ),
+                    iam.PolicyStatement(
+                        sid="AgentCoreMemoryAccess",
+                        actions=[
+                            "bedrock-agentcore:CreateEvent",
+                            "bedrock-agentcore:GetEvent",
+                            "bedrock-agentcore:ListEvents",
+                            "bedrock-agentcore:DeleteEvent",
+                            "bedrock-agentcore:ListMemoryRecords",
+                            "bedrock-agentcore:RetrieveMemoryRecords",
+                            "bedrock-agentcore:GetMemoryRecord",
+                            "bedrock-agentcore:BatchCreateMemoryRecords",
+                            "bedrock-agentcore:BatchUpdateMemoryRecords",
+                            "bedrock-agentcore:BatchDeleteMemoryRecords",
+                            "bedrock-agentcore:DeleteMemoryRecord",
+                            "bedrock-agentcore:StartMemoryExtractionJob",
+                            "bedrock-agentcore:ListMemoryExtractionJobs",
+                            "bedrock-agentcore:ListActors",
+                            "bedrock-agentcore:ListSessions",
+                        ],
+                        resources=[
+                            f"arn:aws:bedrock-agentcore:{self.region}:{self.account}:memory/*",
+                        ],
+                    ),
                 ],
             )
 
