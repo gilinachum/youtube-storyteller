@@ -6,12 +6,13 @@ AI-powered assistant for planning engaging Hebrew YouTube videos. Built with **S
 
 <table><tr><td>
 
-- 🔍 **Research** — web search, trend analysis, content extraction from URLs/PDFs
-- 📝 **Plan** — structured video plans with engagement-optimized hooks, pacing, and CTAs
-- 🎯 **Coach** — virality coaching, topic framing, retention optimization
-- 🎙️ **Voice** — record voice messages, auto-transcribed to text
-- 🎨 **Thumbnails** _(coming soon)_ — AI-generated YouTube thumbnails with iterative design
-- 📄 **Export** — download plans as markdown documents
+- 🔍 **Research** — real-time web search, trend analysis, and content extraction from URLs, PDFs, and PowerPoint files
+- 📝 **Plan** — structured video plans using a 7-part engagement framework (Hook → Promise → Preview → Content → Transitions → Recap → CTA)
+- 🎯 **Coach** — virality coaching, 2–3 framing angles per topic, content level tagging (L100–L400), automatic series split for 8+ min content
+- 🎙️ **Voice** — record voice messages, auto-transcribed via Amazon Transcribe (Hebrew + English)
+- 🎨 **Thumbnails** — AI-generated YouTube thumbnails (1280×720) via Gemini; upload personal photos, iterate conversationally
+- 💬 **Sessions** — persistent chat history, session sharing with collaborators, Hebrew auto-naming
+- 📄 **Export** — download video plans as markdown documents
 
 </td><td align="center">
 
