@@ -74,12 +74,13 @@ class TestListUserPhotos:
 class TestGenerateThumbnail:
     """Tests for generate_thumbnail tool."""
 
+    @patch("agent.tools.generate_thumbnail._dynamodb")
     @patch("agent.tools.generate_thumbnail._get_gemini_client")
     @patch("agent.tools.generate_thumbnail._s3")
-    def test_successful_generation(self, mock_s3, mock_get_client):
+    def test_successful_generation(self, mock_s3, mock_get_client, mock_dynamo):
         from agent.tools.generate_thumbnail import make_generate_thumbnail_tool
 
-        generate_thumbnail = make_generate_thumbnail_tool("test@example.com")
+        generate_thumbnail = make_generate_thumbnail_tool("test@example.com", "test-session-123")
 
         # Mock Gemini response
         mock_client = MagicMock()
@@ -100,29 +101,102 @@ class TestGenerateThumbnail:
         ]
         mock_client.models.generate_content.return_value = mock_response
 
-        # Mock S3
-        mock_s3.generate_presigned_url.return_value = "https://s3.example.com/thumb.png"
+        # Mock DynamoDB table
+        mock_table = MagicMock()
+        mock_dynamo.Table.return_value = mock_table
 
         raw_result = generate_thumbnail._tool_func(
             prompt="Bold text '5 AWS Tips', blue gradient background",
-            session_id="test-session",
+
         )
 
-        # Result starts with markdown image, then JSON
-        assert raw_result.startswith("![thumbnail](")
-        json_part = raw_result.split("\n\n", 1)[1]
+        # Result contains image between markers, then JSON
+        assert "IMAGE_MARKDOWN_START" in raw_result
+        assert "![thumbnail](media://" in raw_result
+        assert "IMAGE_MARKDOWN_END" in raw_result
+        json_part = raw_result.split("IMAGE_MARKDOWN_END", 1)[1].strip()
         result = json.loads(json_part)
         assert result["success"] is True
-        assert "media_path" in result
-        assert "s3_key" in result
+        assert "file_id" in result
+        assert "/" not in result["file_id"], "file_id must be flat"
         assert result["s3_key"].startswith("media/thumbnails/test@example.com/")
         mock_s3.put_object.assert_called_once()
+
+    @patch("agent.tools.generate_thumbnail._dynamodb")
+    @patch("agent.tools.generate_thumbnail._get_gemini_client")
+    @patch("agent.tools.generate_thumbnail._s3")
+    def test_media_protocol_in_output(self, mock_s3, mock_get_client, mock_dynamo):
+        """Output must use media:// protocol, not /media/ path."""
+        from agent.tools.generate_thumbnail import make_generate_thumbnail_tool
+
+        generate_thumbnail = make_generate_thumbnail_tool("test@example.com", "test-session-123")
+
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+
+        mock_part = MagicMock()
+        mock_part.inline_data = MagicMock()
+        mock_part.inline_data.data = b"\x89PNG data"
+        mock_part.text = None
+
+        mock_response = MagicMock()
+        mock_response.candidates = [
+            MagicMock(content=MagicMock(parts=[mock_part]))
+        ]
+        mock_client.models.generate_content.return_value = mock_response
+        mock_dynamo.Table.return_value = MagicMock()
+
+        raw_result = generate_thumbnail._tool_func(
+            prompt="test",
+        )
+
+        assert "media://" in raw_result
+        assert "/media/" not in raw_result, "Must use media:// protocol, not /media/ path"
+
+    @patch("agent.tools.generate_thumbnail._dynamodb")
+    @patch("agent.tools.generate_thumbnail._get_gemini_client")
+    @patch("agent.tools.generate_thumbnail._s3")
+    def test_file_registered_in_dynamo(self, mock_s3, mock_get_client, mock_dynamo):
+        """Generated thumbnail must be registered in session's files array."""
+        from agent.tools.generate_thumbnail import make_generate_thumbnail_tool
+
+        generate_thumbnail = make_generate_thumbnail_tool("test@example.com", "test-session-123")
+
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+
+        mock_part = MagicMock()
+        mock_part.inline_data = MagicMock()
+        mock_part.inline_data.data = b"\x89PNG data"
+        mock_part.text = None
+
+        mock_response = MagicMock()
+        mock_response.candidates = [
+            MagicMock(content=MagicMock(parts=[mock_part]))
+        ]
+        mock_client.models.generate_content.return_value = mock_response
+
+        mock_table = MagicMock()
+        mock_dynamo.Table.return_value = mock_table
+
+        generate_thumbnail._tool_func(
+            prompt="test",
+        )
+
+        mock_table.update_item.assert_called_once()
+        call_kwargs = mock_table.update_item.call_args[1]
+        file_records = call_kwargs["ExpressionAttributeValues"][":files"]
+        assert len(file_records) == 1
+        rec = file_records[0]
+        assert "/" not in rec["file_id"], "file_id must be flat"
+        assert rec["s3_key"].startswith("media/thumbnails/")
+        assert rec["content_type"] == "image/png"
 
     @patch("agent.tools.generate_thumbnail._get_gemini_client")
     def test_handles_no_image_response(self, mock_get_client):
         from agent.tools.generate_thumbnail import make_generate_thumbnail_tool
 
-        generate_thumbnail = make_generate_thumbnail_tool("test@example.com")
+        generate_thumbnail = make_generate_thumbnail_tool("test@example.com", "test-session-123")
 
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client
@@ -148,7 +222,7 @@ class TestGenerateThumbnail:
     def test_handles_api_error(self, mock_get_client):
         from agent.tools.generate_thumbnail import make_generate_thumbnail_tool
 
-        generate_thumbnail = make_generate_thumbnail_tool("test@example.com")
+        generate_thumbnail = make_generate_thumbnail_tool("test@example.com", "test-session-123")
 
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client

@@ -22,7 +22,10 @@ _s3 = boto3.client("s3")
 _secrets = boto3.client("secretsmanager")
 
 UPLOAD_BUCKET = os.environ.get("UPLOAD_BUCKET", "storytellerdata-uploadsbucket5e5e9b64-ysokbp7rrbw5")
+SESSIONS_TABLE = os.environ.get("SESSIONS_TABLE", "storyteller-sessions")
 GEMINI_MODEL = "gemini-3.1-flash-image-preview"
+
+_dynamodb = boto3.resource("dynamodb")
 
 
 def _get_gemini_client():
@@ -47,6 +50,32 @@ def _upload_to_s3(image_data: bytes, email: str, session_id: str, filename: str)
     return key
 
 
+def _register_file(email: str, session_id: str, file_id: str, s3_key: str) -> None:
+    """Register a generated file in the session's files array for download_file."""
+    from datetime import datetime, timezone
+    try:
+        table = _dynamodb.Table(SESSIONS_TABLE)
+        now = datetime.now(timezone.utc).isoformat()
+        table.update_item(
+            Key={"email": email, "session_id": session_id},
+            UpdateExpression="SET #f = list_append(if_not_exists(#f, :empty), :files), updated_at = :now",
+            ExpressionAttributeNames={"#f": "files"},
+            ExpressionAttributeValues={
+                ":files": [{
+                    "file_id": file_id,
+                    "filename": file_id,
+                    "s3_key": s3_key,
+                    "content_type": "image/png",
+                    "uploaded_at": now,
+                }],
+                ":empty": [],
+                ":now": now,
+            },
+        )
+    except Exception as e:
+        logger.warning("Failed to register thumbnail file in session: %s", e)
+
+
 
 def _load_reference_image(s3_key: str) -> Optional[dict]:
     """Load an image from S3 as a Gemini-compatible part."""
@@ -65,13 +94,15 @@ def _load_reference_image(s3_key: str) -> Optional[dict]:
         return None
 
 
-def make_generate_thumbnail_tool(email: str):
-    """Create a session-bound generate_thumbnail tool with the user's email."""
+def make_generate_thumbnail_tool(email: str, session_id: str = ""):
+    """Create a session-bound generate_thumbnail tool with the user's email and session ID."""
+
+    # Pre-bind session_id so the sub-agent model doesn't need to know it
+    _bound_session_id = session_id
 
     @tool
     def generate_thumbnail(
         prompt: str,
-        session_id: str = "",
         reference_image_keys: str = "",
         style_notes: str = "",
     ) -> str:
@@ -81,7 +112,6 @@ def make_generate_thumbnail_tool(email: str):
             prompt: Detailed English description of the thumbnail to generate.
                     Include: composition, colors, text overlay, style, mood.
                     Always specify "YouTube thumbnail, 1280x720".
-            session_id: The current session ID for organizing generated files.
             reference_image_keys: Comma-separated S3 keys of reference images
                                  (user photos, style templates, existing thumbnails).
             style_notes: Additional style guidance (e.g., from a style template).
@@ -148,22 +178,26 @@ def make_generate_thumbnail_tool(email: str):
                 }, ensure_ascii=False)
 
             # Save to S3 under email/session path
-            file_id = str(uuid.uuid4())
-            filename = f"thumb-{file_id}.png"
-            s3_key = _upload_to_s3(image_data, email, session_id or "default", filename)
+            file_id = f"thumb-{uuid.uuid4()}.png"  # flat id — safe for API GW path
+            s3_key = _upload_to_s3(image_data, email, _bound_session_id or "default", file_id)
 
-            # Return CloudFront media path (no presigned URL needed)
-            media_path = f"/media/{s3_key.removeprefix('media/')}"
+            # Register file in session so download_file can resolve it
+            _register_file(email, _bound_session_id or "default", file_id, s3_key)
 
-            return f"![thumbnail]({media_path})\n\n" + json.dumps({
-                "success": True,
-                "media_path": media_path,
-                "s3_key": s3_key,
-                "filename": filename,
-                "size_bytes": len(image_data),
-                "prompt_used": prompt[:500],
-                "text_response": text_response,
-            }, ensure_ascii=False)
+            return (
+                f"IMAGE_MARKDOWN_START\n"
+                f"![thumbnail](media://{file_id})\n"
+                f"IMAGE_MARKDOWN_END\n\n"
+                + json.dumps({
+                    "success": True,
+                    "file_id": file_id,
+                    "s3_key": s3_key,
+                    "filename": file_id,
+                    "size_bytes": len(image_data),
+                    "prompt_used": prompt[:500],
+                    "text_response": text_response,
+                }, ensure_ascii=False)
+            )
 
         except Exception as e:
             logger.error("Gemini image generation failed: %s", e, exc_info=True)

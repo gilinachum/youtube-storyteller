@@ -57,16 +57,28 @@ When crafting the image generation prompt:
 
 # Displaying Generated Images — CRITICAL
 
-When `generate_thumbnail` returns successfully with a URL:
-- **ALWAYS** include the image in your response using markdown: `![thumbnail](THE_URL_FROM_RESULT)`
-- Copy the EXACT `url` field from the tool result into the markdown syntax
-- Put the image FIRST in your response, then your commentary below
-- Example response format:
-  ![thumbnail](https://...the-presigned-url...)
-  
-  🎨 הנה הטאמבנייל!
-- **NEVER** describe the image without showing it — the user MUST see the actual generated image
-- If generation fails, show the error and the concept description instead
+When `generate_thumbnail` succeeds, its output contains the image between marker lines:
+```
+IMAGE_MARKDOWN_START
+![thumbnail](media://thumb-xxxx.png)
+IMAGE_MARKDOWN_END
+```
+
+You MUST:
+1. Copy the ENTIRE line `![thumbnail](media://...)` exactly as-is into your response — this is how the frontend displays the image.
+2. Do NOT modify, omit, or re-wrap the `media://` URL. It is a custom protocol the frontend understands.
+3. Place the image line FIRST in your response, then add your Hebrew commentary below it.
+4. If you omit this line, **the user will see no image** — this is a critical failure.
+
+Example response format:
+```
+![thumbnail](media://thumb-abc123.png)
+
+🎨 הנה הטאמבנייל! ...
+```
+
+- **NEVER** describe the image without showing it — the user MUST see the actual generated image.
+- If generation fails (success=false), show the error and the concept description instead.
 
 # Important Rules
 
@@ -79,7 +91,7 @@ When `generate_thumbnail` returns successfully with a URL:
 """
 
 
-def create_thumbnail_agent(email: str = "") -> Agent:
+def create_thumbnail_agent(email: str = "", session_id: str = "") -> Agent:
     """Create a thumbnail design sub-agent with image generation tools."""
 
     model = BedrockModel(
@@ -89,7 +101,7 @@ def create_thumbnail_agent(email: str = "") -> Agent:
     )
 
     list_user_photos = make_list_user_photos_tool(email)
-    generate_thumbnail = make_generate_thumbnail_tool(email)
+    generate_thumbnail = make_generate_thumbnail_tool(email, session_id)
 
     return Agent(
         name="thumbnail_designer",

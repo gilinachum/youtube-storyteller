@@ -22,6 +22,7 @@ from agent.tools import (
     web_research,
     trend_analysis,
 )
+from agent.tools.analyze_youtube_video import analyze_youtube_video
 from agent.tools.session_manager import make_name_session_tool
 from agent.tools.export_document import make_export_document_tool
 from agent.tools.save_user_photo import make_save_user_photo_tool
@@ -29,8 +30,11 @@ from agent.tools.start_transcription import make_start_transcription_tool
 from agent.tools.list_pending_jobs import make_list_pending_jobs_tool
 from agent.tools.mark_job_consumed import make_mark_job_consumed_tool
 from agent.tools.read_file import make_read_file_tool
+from agent.tools.generate_qr_code import make_generate_qr_code_tool
+from agent.memory_retrieval import retrieve_long_term_memories, format_memories_for_prompt
 from agent.research_agent import create_research_agent
 from agent.thumbnail_agent import create_thumbnail_agent
+from agent.tools.recall_session_details import make_recall_session_details_tool
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +49,7 @@ def email_to_actor_id(email: str) -> str:
     return email.replace("@", "-at-").replace("+", "-").replace(".", "-")
 
 
-def create_agent(email: str = "", session_id: str = "") -> Agent:
+def create_agent(email: str = "", session_id: str = "", user_message: str = None) -> Agent:
     """Create and configure the StoryTeller agent."""
     from botocore.config import Config as BotoConfig
 
@@ -58,6 +62,15 @@ def create_agent(email: str = "", session_id: str = "") -> Agent:
 
     system_prompt = build_system_prompt()
 
+    # Inject long-term memories into system prompt (Option B: triggered by first user message)
+    if user_message and email:
+        memories = retrieve_long_term_memories(email, user_message)
+        memory_block = format_memories_for_prompt(memories)
+        if memory_block:
+            # Prepend memories so they appear before the role definition
+            system_prompt = memory_block + "\n\n" + system_prompt
+            logger.info("Injected %d long-term memories into system prompt", len(memories))
+
     # Create session-aware tools
     name_session = make_name_session_tool(email, session_id)
     export_document = make_export_document_tool(email, session_id)
@@ -66,6 +79,8 @@ def create_agent(email: str = "", session_id: str = "") -> Agent:
     list_pending_jobs = make_list_pending_jobs_tool(email, session_id)
     mark_job_consumed = make_mark_job_consumed_tool(session_id)
     read_file = make_read_file_tool(session_id, email)
+    generate_qr_code = make_generate_qr_code_tool(email, session_id)
+    recall_session_details = make_recall_session_details_tool(email)
 
     # Create research sub-agent as a tool
     research_agent = create_research_agent()
@@ -81,7 +96,7 @@ def create_agent(email: str = "", session_id: str = "") -> Agent:
     )
 
     # Create thumbnail sub-agent as a tool (preserve_context for iterative design)
-    thumbnail_agent = create_thumbnail_agent(email=email)
+    thumbnail_agent = create_thumbnail_agent(email=email, session_id=session_id)
     thumbnail_tool = thumbnail_agent.as_tool(
         name="design_thumbnail",
         description=(
@@ -133,8 +148,11 @@ def create_agent(email: str = "", session_id: str = "") -> Agent:
             list_pending_jobs,
             mark_job_consumed,
             read_file,
+            analyze_youtube_video,
+            generate_qr_code,
             research_tool,
             thumbnail_tool,
+            recall_session_details,
         ],
         plugins=[skills_plugin],
         session_manager=session_manager,
