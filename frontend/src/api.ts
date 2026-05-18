@@ -83,7 +83,7 @@ export async function deleteSession(sessionId: string): Promise<void> {
   if (!res.ok) throw new Error(data.error || 'Failed to delete session')
 }
 
-export async function getSessionMessages(sessionId: string): Promise<{ messages: Message[]; files: FileRecord[]; shared_with: string[] }> {
+export async function getSessionMessages(sessionId: string): Promise<{ messages: Message[]; files: FileRecord[]; shared_with: string[]; access: 'owner' | 'collaborator' | 'viewer'; visibility: 'private' | 'public' }> {
   const headers = await authHeaders()
   const res = await fetch(`${API_BASE}/sessions/${sessionId}`, { headers })
   const data = await parseJsonOrReauth(res)
@@ -92,6 +92,8 @@ export async function getSessionMessages(sessionId: string): Promise<{ messages:
     messages: data.messages || [],
     files: data.files || [],
     shared_with: data.shared_with || [],
+    access: data.access || 'owner',
+    visibility: data.visibility || 'private',
   }
 }
 
@@ -103,6 +105,25 @@ export async function shareSession(sessionId: string, shareWith: string): Promis
   })
   const data = await parseJsonOrReauth(res)
   if (!res.ok) throw new Error(data.error || 'Share failed')
+}
+
+export async function setSessionVisibility(sessionId: string, visibility: 'public' | 'private'): Promise<void> {
+  const headers = await authHeaders({ 'Content-Type': 'application/json' })
+  const res = await fetch(`${API_BASE}/sessions/${sessionId}/visibility`, {
+    method: 'PATCH', headers,
+    body: JSON.stringify({ visibility }),
+  })
+  const data = await parseJsonOrReauth(res)
+  if (!res.ok) throw new Error(data.error || 'Visibility change failed')
+}
+
+export async function unshareSession(sessionId: string, email: string): Promise<void> {
+  const headers = await authHeaders()
+  const res = await fetch(`${API_BASE}/sessions/${sessionId}/share/${encodeURIComponent(email)}`, {
+    method: 'DELETE', headers,
+  })
+  const data = await parseJsonOrReauth(res)
+  if (!res.ok) throw new Error(data.error || 'Unshare failed')
 }
 
 export async function getFileDownloadUrl(sessionId: string, fileId: string): Promise<string> {
@@ -156,7 +177,7 @@ export interface StreamChatOptions {
 export async function streamChat(opts: StreamChatOptions): Promise<void> {
   const { message, sessionId, fileRefs, onChunk, onDone, onError, signal } = opts
 
-  try {
+  const doStream = async (retry: boolean): Promise<Response> => {
     const headers = await authHeaders({ 'Content-Type': 'application/json', 'X-Session-Id': sessionId })
     const res = await fetch(`${API_BASE}/chat-stream`, {
       method: 'POST', headers,
@@ -167,6 +188,15 @@ export async function streamChat(opts: StreamChatOptions): Promise<void> {
       }),
       signal,
     })
+    if (res.status === 401 && retry) {
+      // Token may have just expired — force-refresh and retry once
+      return doStream(false)
+    }
+    return res
+  }
+
+  try {
+    const res = await doStream(true)
 
     if (!res.ok) {
       const errBody = await res.text()

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { getFileDownloadUrl } from '../api'
+import MediaImage from './MediaImage'
 
 const FILE_ICON_MAP: Record<string, string> = {
   pdf: '📕',
@@ -263,6 +264,11 @@ function makeMarkdownComponents(sessionId?: string): Components {
   },
   // Render thumbnail/inline images with proper styling
   img({ src, alt }) {
+    // Detect media:// protocol — resolve via presigned URL
+    if (src && src.startsWith('media://')) {
+      const fileId = src.replace('media://', '')
+      return <MediaImage fileId={fileId} alt={alt || 'image'} sessionId={sessionId || ''} />
+    }
     return (
       <div className="my-3">
         <img
@@ -303,23 +309,37 @@ export default function ChatMessages({ messages, loading, loadingText, progressL
   const bottomRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const isStickRef = useRef(true)
+  // Tracks the previous scrollTop so we can detect user-initiated upward scrolls
+  const prevScrollTopRef = useRef(0)
 
   const markdownComponents = useMemo(() => makeMarkdownComponents(sessionId), [sessionId])
 
-  // Track if user is near the bottom (within 150px)
+  // Disable auto-scroll the moment the user scrolls up (any amount).
+  // Re-enable only when they scroll back within 150 px of the bottom.
+  // This prevents fast streaming from snapping the user back before they
+  // can scroll more than the old 150 px threshold.
   const handleScroll = useCallback(() => {
     const el = containerRef.current
     if (!el) return
     const threshold = 150
-    isStickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < threshold
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < threshold
+    const scrolledUp = el.scrollTop < prevScrollTopRef.current
+    prevScrollTopRef.current = el.scrollTop
+    if (scrolledUp) {
+      isStickRef.current = false
+    } else if (atBottom) {
+      isStickRef.current = true
+    }
   }, [])
 
   // Auto-scroll only if user hasn't scrolled up
   useEffect(() => {
     if (isStickRef.current) {
-      // Use instant scroll during streaming to avoid smooth animation conflicts
       const el = containerRef.current
       if (el) {
+        // Pre-update prevScrollTopRef so the resulting scroll event isn't
+        // mistaken for a user-initiated upward scroll.
+        prevScrollTopRef.current = el.scrollHeight
         el.scrollTop = el.scrollHeight
       }
     }
@@ -345,7 +365,7 @@ export default function ChatMessages({ messages, loading, loadingText, progressL
               <UserMessage content={msg.content} email={email} />
             ) : (
               <div className="prose-rtl">
-                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{msg.content}</ReactMarkdown>
+                <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={(url) => url} components={markdownComponents}>{msg.content}</ReactMarkdown>
               </div>
             )}
           </div>
