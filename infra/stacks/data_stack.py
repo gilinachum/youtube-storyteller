@@ -1,9 +1,12 @@
-"""Data stack — DynamoDB tables + S3 uploads bucket."""
+"""Data stack — DynamoDB tables + S3 uploads bucket + AgentCore Memory."""
+import os
+
 import aws_cdk as cdk
 from aws_cdk import (
     Stack,
     aws_dynamodb as dynamodb,
     aws_s3 as s3,
+    aws_bedrockagentcore as bac,
     RemovalPolicy,
     Duration,
 )
@@ -24,6 +27,13 @@ class DataStack(Stack):
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
             point_in_time_recovery_specification=dynamodb.PointInTimeRecoverySpecification(point_in_time_recovery_enabled=True),
             removal_policy=RemovalPolicy.RETAIN,
+        )
+
+        # GSI for direct session_id lookups (public sharing, shared session access)
+        self.sessions_table.add_global_secondary_index(
+            index_name="session-id-index",
+            partition_key=dynamodb.Attribute(name="session_id", type=dynamodb.AttributeType.STRING),
+            projection_type=dynamodb.ProjectionType.ALL,
         )
 
         # ── Messages table ──────────────────────────────────────────────────
@@ -80,8 +90,45 @@ class DataStack(Stack):
             ],
         )
 
+        # ── AgentCore Memory ─────────────────────────────────────────────
+        # Memory resource for long-term and short-term conversation memory.
+        # Existing resource imported via `cdk import` — do NOT delete/recreate.
+        memory_name = os.environ.get("AGENTCORE_MEMORY_NAME", "storytellerDevMemory" if "dev" in prefix else "storytellerProdMemory")
+        self.memory = bac.CfnMemory(
+            self, "AgentCoreMemory",
+            name=memory_name,
+            description="StoryTeller conversation memory",
+            event_expiry_duration=365,
+            memory_strategies=[
+                bac.CfnMemory.MemoryStrategyProperty(
+                    user_preference_memory_strategy=bac.CfnMemory.UserPreferenceMemoryStrategyProperty(
+                        name="StoryTellerPreferences",
+                        description=(
+                            "Extracts user's content preferences: style level (L100-L400), "
+                            "tone (humor/serious), structure preference, thumbnail style, "
+                            "audience targeting, and channel/series conventions."
+                        ),
+                        namespace_templates=["/users/{actorId}/preferences/"],
+                    ),
+                ),
+                bac.CfnMemory.MemoryStrategyProperty(
+                    summary_memory_strategy=bac.CfnMemory.SummaryMemoryStrategyProperty(
+                        name="StoryTellerSessionSummaries",
+                        description=(
+                            "Creates concise summaries of each video planning session: "
+                            "topic covered, decisions made, plan exported, thumbnail created, "
+                            "and outcome."
+                        ),
+                        namespace_templates=["/sessions/{actorId}/{sessionId}/"],
+                    ),
+                ),
+            ],
+        )
+        self.memory.apply_removal_policy(RemovalPolicy.RETAIN)
+
         # ── Outputs ─────────────────────────────────────────────────────────
         cdk.CfnOutput(self, "SessionsTableName", value=self.sessions_table.table_name)
         cdk.CfnOutput(self, "MessagesTableName", value=self.messages_table.table_name)
         cdk.CfnOutput(self, "JobsTableName", value=self.jobs_table.table_name)
         cdk.CfnOutput(self, "UploadsBucketName", value=self.uploads_bucket.bucket_name)
+        cdk.CfnOutput(self, "MemoryId", value=self.memory.attr_memory_id)
