@@ -36,9 +36,18 @@ def handler(event, context):
 
         session_id = path_params.get("id")
 
+        # DELETE /sessions/{id}/share/{email} — unshare a collaborator
+        if method == "DELETE" and session_id and "/share/" in path:
+            target_email = path.split("/share/")[-1]
+            return unshare_session(email, session_id, target_email)
+
         # DELETE /sessions/{id} — delete a session
-        if method == "DELETE" and session_id and not path.endswith("/share") and "/files/" not in path:
+        if method == "DELETE" and session_id and "/files/" not in path:
             return delete_session(email, session_id)
+
+        # PATCH /sessions/{id}/visibility — toggle visibility
+        if method == "PATCH" and session_id and path.endswith("/visibility"):
+            return set_visibility(event, email, session_id)
 
         # POST /sessions/{id}/share — share a session
         if method == "POST" and session_id and path.endswith("/share"):
@@ -106,7 +115,7 @@ def _extract_display_text(message: dict) -> str:
     return "".join(parts)
 
 
-def _get_messages_from_memory(session_id: str, email: str) -> list | None:
+def _get_messages_from_memory(session_id: str, email: str):
     """Try to read messages from AgentCore Memory via boto3. Returns None if unavailable."""
     if not AGENTCORE_MEMORY_ID or not email:
         return None
@@ -168,20 +177,35 @@ def get_session(session_id: str, email: str = ""):
     # Get session metadata first (needed for shared sessions)
     sess_table = dynamodb.Table(SESSIONS_TABLE)
     session_meta = None
+    access = None
+
     if email:
         resp = sess_table.get_item(Key={"email": email, "session_id": session_id})
         session_meta = resp.get("Item")
+        if session_meta:
+            access = "owner"
 
-    # If not found under this email, scan for it (shared session)
+    # If not found under this email, look up via GSI (shared session or public)
     if not session_meta:
-        scan = sess_table.scan(
-            FilterExpression="session_id = :sid",
-            ExpressionAttributeValues={":sid": session_id},
-            Limit=5,
+        result = sess_table.query(
+            IndexName="session-id-index",
+            KeyConditionExpression=Key("session_id").eq(session_id),
+            Limit=1,
         )
-        items = scan.get("Items", [])
+        items = result.get("Items", [])
         if items:
             session_meta = items[0]
+            # Determine access level
+            shared_with = session_meta.get("shared_with", []) or []
+            if email in shared_with:
+                access = "collaborator"
+            elif session_meta.get("visibility") == "public":
+                access = "viewer"
+            else:
+                return _response(403, {"error": "access denied"})
+
+    if not session_meta:
+        return _response(404, {"error": "session not found"})
 
     # For AgentCore Memory: use the owner's email as actorId (not the viewer's)
     memory_email = session_meta.get("email", email) if session_meta else email
@@ -196,12 +220,15 @@ def get_session(session_id: str, email: str = ""):
 
     files = session_meta.get("files", []) if session_meta else []
     shared_with = session_meta.get("shared_with", []) if session_meta else []
+    vis = session_meta.get("visibility", "private") if session_meta else "private"
 
     return _response(200, {
         "session_id": session_id,
         "messages": messages,
         "files": files,
-        "shared_with": shared_with,
+        "shared_with": shared_with if access != "viewer" else [],
+        "access": access or "owner",
+        "visibility": vis,
     })
 
 
@@ -244,6 +271,66 @@ def share_session(event, owner_email: str, session_id: str):
     return _response(200, {"message": "Session shared", "shared_with": share_with_email})
 
 
+def set_visibility(event, email: str, session_id: str):
+    """Set session visibility to public or private. Owner only."""
+    body = json.loads(event.get("body") or "{}")
+    new_visibility = body.get("visibility", "").strip().lower()
+
+    if new_visibility not in ("public", "private"):
+        return _response(400, {"error": "visibility must be 'public' or 'private'"})
+
+    table = dynamodb.Table(SESSIONS_TABLE)
+
+    # Verify ownership
+    resp = table.get_item(
+        Key={"email": email, "session_id": session_id},
+        ProjectionExpression="session_id",
+    )
+    if not resp.get("Item"):
+        return _response(403, {"error": "only the owner can change visibility"})
+
+    table.update_item(
+        Key={"email": email, "session_id": session_id},
+        UpdateExpression="SET visibility = :v",
+        ExpressionAttributeValues={":v": new_visibility},
+    )
+
+    return _response(200, {"message": "Visibility updated", "visibility": new_visibility})
+
+
+def unshare_session(owner_email: str, session_id: str, target_email: str):
+    """Remove a collaborator from a session. Owner only."""
+    import urllib.parse
+    target_email = urllib.parse.unquote(target_email).strip().lower()
+
+    if not target_email:
+        return _response(400, {"error": "email is required"})
+
+    table = dynamodb.Table(SESSIONS_TABLE)
+
+    # Verify ownership
+    resp = table.get_item(
+        Key={"email": owner_email, "session_id": session_id},
+        ProjectionExpression="session_id, shared_with",
+    )
+    item = resp.get("Item")
+    if not item:
+        return _response(403, {"error": "only the owner can unshare"})
+
+    current_shared = item.get("shared_with", []) or []
+    if target_email not in current_shared:
+        return _response(200, {"message": "Not shared with this email"})
+
+    # Find the index and remove
+    idx = current_shared.index(target_email)
+    table.update_item(
+        Key={"email": owner_email, "session_id": session_id},
+        UpdateExpression=f"REMOVE shared_with[{idx}]",
+    )
+
+    return _response(200, {"message": "Collaborator removed", "removed": target_email})
+
+
 def delete_session(email: str, session_id: str):
     """Delete a session and all its messages."""
     sess_table = dynamodb.Table(SESSIONS_TABLE)
@@ -271,25 +358,30 @@ def delete_session(email: str, session_id: str):
 
 
 def download_file(session_id: str, file_id: str, email: str):
-    """Generate a presigned download URL for a file."""
-    # Find the session to get the file's S3 key
+    """Generate a presigned download URL for a file. Owner, collaborators, and viewers of public sessions allowed."""
     sess_table = dynamodb.Table(SESSIONS_TABLE)
 
-    # Search for the session
+    # Owner path
     session_meta = None
     if email:
         resp = sess_table.get_item(Key={"email": email, "session_id": session_id})
         session_meta = resp.get("Item")
 
+    # Non-owner: query GSI and check access
     if not session_meta:
-        scan = sess_table.scan(
-            FilterExpression="session_id = :sid",
-            ExpressionAttributeValues={":sid": session_id},
-            Limit=5,
+        result = sess_table.query(
+            IndexName="session-id-index",
+            KeyConditionExpression=Key("session_id").eq(session_id),
+            Limit=1,
         )
-        items = scan.get("Items", [])
+        items = result.get("Items", [])
         if items:
-            session_meta = items[0]
+            candidate = items[0]
+            shared_with = candidate.get("shared_with", []) or []
+            if email in shared_with or candidate.get("visibility") == "public":
+                session_meta = candidate
+            else:
+                return _response(403, {"error": "access denied"})
 
     if not session_meta:
         return _response(404, {"error": "Session not found"})
@@ -299,7 +391,6 @@ def download_file(session_id: str, file_id: str, email: str):
     if not target_file:
         return _response(404, {"error": "File not found"})
 
-    # Generate presigned download URL
     download_url = s3.generate_presigned_url(
         "get_object",
         Params={
@@ -319,7 +410,7 @@ def _response(status_code, body):
         "headers": {
             "Content-Type": "application/json",
             "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
+            "Access-Control-Allow-Methods": "GET,POST,DELETE,PATCH,OPTIONS",
         },
         "body": json.dumps(body, default=str),
     }

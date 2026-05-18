@@ -45,6 +45,13 @@ def _create_tables():
             {"AttributeName": "email", "AttributeType": "S"},
             {"AttributeName": "session_id", "AttributeType": "S"},
         ],
+        GlobalSecondaryIndexes=[
+            {
+                "IndexName": "session-id-index",
+                "KeySchema": [{"AttributeName": "session_id", "KeyType": "HASH"}],
+                "Projection": {"ProjectionType": "ALL"},
+            },
+        ],
         BillingMode="PAY_PER_REQUEST",
     )
     client.create_table(
