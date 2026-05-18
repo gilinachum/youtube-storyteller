@@ -4,12 +4,20 @@ AI-powered assistant for planning engaging Hebrew YouTube videos. Built with **S
 
 ## What it does
 
+<table><tr><td>
+
 - 🔍 **Research** — web search, trend analysis, content extraction from URLs/PDFs
 - 📝 **Plan** — structured video plans with engagement-optimized hooks, pacing, and CTAs
 - 🎯 **Coach** — virality coaching, topic framing, retention optimization
 - 🎙️ **Voice** — record voice messages, auto-transcribed to text
 - 🎨 **Thumbnails** _(coming soon)_ — AI-generated YouTube thumbnails with iterative design
 - 📄 **Export** — download plans as markdown documents
+
+</td><td align="center">
+
+<img src="img/github-repo-qr.png" width="320" alt="GitHub repo QR code" />
+
+</td></tr></table>
 
 ## Documentation
 
