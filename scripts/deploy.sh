@@ -86,11 +86,18 @@ if [[ -n "$AGENT_RUNTIME_ID" ]]; then
   DEPLOY_TS=$(date -u +%Y%m%d%H%M%S)
 
   # Table names are fixed (same in dev/prod — different regions)
+  AGENTCORE_MEMORY_ID="${AGENTCORE_MEMORY_ID:-}"
+  AGENT_NAME="storytellerDev"
+  if [[ "$STAGE" == "prod" ]]; then
+    AGENT_NAME="storytellerProd"
+  fi
   uv run agentcore deploy \
+    --agent "$AGENT_NAME" \
     --env UPLOAD_BUCKET="$UPLOAD_BUCKET" \
     --env BEDROCK_MODEL_ID="$BEDROCK_MODEL_ID" \
     --env BEDROCK_REGION="$REGION" \
     --env DEPLOY_TS="$DEPLOY_TS" \
+    ${AGENTCORE_MEMORY_ID:+--env AGENTCORE_MEMORY_ID="$AGENTCORE_MEMORY_ID"} \
     -auc
 
   # ── Restore JWT authorizer (deploy resets it) ─────────────────────────────
@@ -153,3 +160,10 @@ fi
 
 echo ""
 echo "✅ Deploy complete ($STAGE)."
+
+# ── Smoke test (dev only) ─────────────────────────────────────────────────────
+if [[ "$STAGE" == "dev" ]]; then
+  echo ""
+  echo "🧪 Running post-deploy smoke test..."
+  "$PROJECT_DIR/scripts/smoke-test.sh" dev
+fi
