@@ -83,6 +83,8 @@ if [[ -n "$AGENT_RUNTIME_ID" ]]; then
   REGION="${BEDROCK_REGION:-us-east-1}"
   UPLOAD_BUCKET="${UPLOAD_BUCKET:?Set UPLOAD_BUCKET env var}"
   BEDROCK_MODEL_ID="${BEDROCK_MODEL_ID:-us.anthropic.claude-sonnet-4-6}"
+  AGENT_MODEL_PROVIDER="${AGENT_MODEL_PROVIDER:-bedrock}"
+  AGENT_MODEL_ID="${AGENT_MODEL_ID:-$BEDROCK_MODEL_ID}"
   DEPLOY_TS=$(date -u +%Y%m%d%H%M%S)
 
   # Table names are fixed (same in dev/prod — different regions)
@@ -96,6 +98,9 @@ if [[ -n "$AGENT_RUNTIME_ID" ]]; then
     --env UPLOAD_BUCKET="$UPLOAD_BUCKET" \
     --env BEDROCK_MODEL_ID="$BEDROCK_MODEL_ID" \
     --env BEDROCK_REGION="$REGION" \
+    --env AGENT_MODEL_PROVIDER="$AGENT_MODEL_PROVIDER" \
+    --env AGENT_MODEL_ID="$AGENT_MODEL_ID" \
+    ${MANTLE_REGION:+--env MANTLE_REGION="$MANTLE_REGION"} \
     --env DEPLOY_TS="$DEPLOY_TS" \
     ${AGENTCORE_MEMORY_ID:+--env AGENTCORE_MEMORY_ID="$AGENTCORE_MEMORY_ID"} \
     -auc

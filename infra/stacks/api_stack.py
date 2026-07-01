@@ -253,6 +253,7 @@ class ApiStack(Stack):
         authorizer = None
         default_auth: dict = {}
         auth_callback_fn = None
+        auth_refresh_fn = None
 
         if auth_mode == "cognito":
             # ── Cognito User Pool (dev) ─────────────────────────────────────
@@ -372,6 +373,24 @@ class ApiStack(Stack):
                 },
             )
 
+            # Auth-refresh Lambda (silent token refresh)
+            auth_refresh_fn = lambda_.Function(
+                self, "AuthRefreshFn",
+                function_name=f"{prefix}-auth-refresh",
+                runtime=lambda_.Runtime.PYTHON_3_13,
+                architecture=lambda_.Architecture.ARM_64,
+                handler="auth_refresh.handler",
+                code=lambda_.Code.from_asset(os.path.join(PROJECT_ROOT, "api")),
+                timeout=Duration.seconds(15),
+                memory_size=256,
+                role=auth_role,
+                environment={
+                    "FEDERATE_TOKEN_URL": federate_token_url,
+                    "FEDERATE_SECRET_ARN": federate_secret.secret_arn,
+                    "ALLOWED_ORIGIN": self.node.try_get_context("app_origin") or "*",
+                },
+            )
+
         # ── API Gateway ──────────────────────────────────────────────────────
         api = apigw.RestApi(
             self, "StoryTellerApi",
@@ -392,6 +411,12 @@ class ApiStack(Stack):
             callback_res.add_method(
                 "POST",
                 apigw.LambdaIntegration(auth_callback_fn),
+                authorization_type=apigw.AuthorizationType.NONE,
+            )
+            refresh_res = auth_res.add_resource("refresh")
+            refresh_res.add_method(
+                "POST",
+                apigw.LambdaIntegration(auth_refresh_fn),
                 authorization_type=apigw.AuthorizationType.NONE,
             )
 

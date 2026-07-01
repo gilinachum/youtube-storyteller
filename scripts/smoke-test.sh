@@ -59,7 +59,23 @@ if [[ "$TOKEN" == *"error"* ]] || [[ "$TOKEN" == *"Error"* ]]; then
   echo "   ❌ Login failed: $TOKEN"
   exit 1
 fi
-echo "   ✅ Login OK (token length: ${#TOKEN})"
+echo "   ✅ Login OK — admin auth (token length: ${#TOKEN})"
+
+# Also verify USER_SRP_AUTH is enabled (frontend uses this flow)
+SRP_CHECK=$(aws cognito-idp describe-user-pool-client \
+  --user-pool-id "$POOL_ID" \
+  --client-id "$CLIENT_ID" \
+  --region "$REGION" \
+  --query 'UserPoolClient.ExplicitAuthFlows' \
+  --output text 2>&1)
+
+if echo "$SRP_CHECK" | grep -q "ALLOW_USER_SRP_AUTH"; then
+  echo "   ✅ USER_SRP_AUTH enabled (frontend login will work)"
+else
+  echo "   ❌ USER_SRP_AUTH is NOT enabled — frontend login will fail!"
+  echo "   Current flows: $SRP_CHECK"
+  exit 1
+fi
 
 # ── Step 2: Sessions endpoint ──────────────────────────────────────────────
 echo ""
@@ -81,6 +97,9 @@ echo "   ✅ /sessions OK ($SESSION_COUNT sessions)"
 # ── Step 3: Chat message ──────────────────────────────────────────────────
 echo ""
 echo "3️⃣  Sending test message to agent..."
+
+# Brief wait for runtime to pick up config after deploy
+sleep 5
 
 SESSION_ID="smoke-test-$(date +%s)"
 RESPONSE=$(curl -s -N --max-time 60 -X POST "$API_URL/chat-stream" \

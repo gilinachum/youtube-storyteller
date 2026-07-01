@@ -61,3 +61,4 @@ frontend/public/js/cfs-handler.js
 infra/layers/federate-auth/
 .env.dev
 test-results/
+evaluations/

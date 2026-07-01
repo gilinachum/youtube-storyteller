@@ -95,6 +95,7 @@ cp .env.example .env
 | `scripts/test.sh` | Unit tests (moto, fast) |
 | `scripts/test-e2e.sh` | Playwright browser tests |
 | `scripts/check-agent.sh` | Verify agent status/auth/env |
+| `scripts/run-batch-eval.py` | Run AgentCore batch evaluation on historical sessions |
 
 ## Environment Variables
 
