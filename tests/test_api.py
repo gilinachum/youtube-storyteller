@@ -525,6 +525,46 @@ class TestSessionsDownloadFile:
         assert body["filename"] == "notes.pdf"
 
     @mock_aws
+    def test_download_file_hebrew_filename(self):
+        """Download URL for Hebrew filename uses RFC 5987 encoding (no ISO-8859-1 error)."""
+        _create_sessions_table()
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket="test-uploads")
+
+        hebrew_name = "\u05dc\u05d1\u05e0\u05d5\u05ea \u05d0\u05d5 \u05dc\u05e7\u05e0\u05d5\u05ea.md"
+        db = boto3.resource("dynamodb", region_name="us-east-1")
+        db.Table("test-sessions").put_item(Item={
+            "email": "t@t.com",
+            "session_id": "s1",
+            "name": "Hebrew File",
+            "files": [{
+                "file_id": "f1",
+                "filename": hebrew_name,
+                "s3_key": "uploads/t@t.com/s1/f1.md",
+            }],
+        })
+
+        from api.sessions import handler
+        event = _make_apigw_event(
+            method="GET", path="/sessions/s1/files/f1",
+            path_params={"id": "s1"},
+        )
+
+        with patch.dict(os.environ, {"SESSIONS_TABLE": "test-sessions", "MESSAGES_TABLE": "test-messages", "UPLOAD_BUCKET": "test-uploads"}):
+            response = handler(event, {})
+
+        assert response["statusCode"] == 200
+        body = json.loads(response["body"])
+        assert "download_url" in body
+        # Presigned URL must use percent-encoded filename (RFC 5987)
+        # The URL itself percent-encodes the query value, so check for encoded form
+        from urllib.parse import unquote
+        decoded_url = unquote(body["download_url"])
+        assert "filename*=UTF-8''" in decoded_url
+        # Must NOT contain raw Hebrew in the disposition param
+        assert f'filename="{hebrew_name}"' not in decoded_url
+
+    @mock_aws
     def test_download_file_not_found(self):
         """Download a file that doesn't exist returns 404."""
         _create_sessions_table()
