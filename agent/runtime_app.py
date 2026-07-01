@@ -105,7 +105,8 @@ def _ensure_session(email: str, app_session_id: str, now: str):
             },
             ConditionExpression="attribute_not_exists(session_id)",
         )
-    except Exception:
+    except dynamodb.meta.client.exceptions.ConditionalCheckFailedException:
+        # Session already exists — just bump updated_at (expected on 2nd+ message)
         table.update_item(
             Key={"email": email, "session_id": app_session_id},
             UpdateExpression="SET updated_at = :now",
