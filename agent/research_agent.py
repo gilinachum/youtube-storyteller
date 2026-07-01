@@ -131,9 +131,9 @@ def create_research_agent(model_provider: Optional[str] = None) -> Agent:
             max_tokens=8192,
         )
     else:
-        # Default: Sonnet on Bedrock
+        # Default: Sonnet on Bedrock (inherit from main agent config)
         model = BedrockModel(
-            model_id="us.anthropic.claude-sonnet-4-6",
+            model_id=os.environ.get("AGENT_MODEL_ID", "global.anthropic.claude-sonnet-5"),
             region_name=os.environ.get("AWS_REGION", "us-west-2"),
             max_tokens=8192,
             cache_config=CacheConfig(strategy="auto"),

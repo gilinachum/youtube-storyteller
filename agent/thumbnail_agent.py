@@ -95,7 +95,7 @@ def create_thumbnail_agent(email: str = "", session_id: str = "") -> Agent:
     """Create a thumbnail design sub-agent with image generation tools."""
 
     model = BedrockModel(
-        model_id="us.anthropic.claude-sonnet-4-6",
+        model_id=os.environ.get("AGENT_MODEL_ID", "global.anthropic.claude-sonnet-5"),
         region_name=os.environ.get("AWS_REGION", "us-west-2"),
         max_tokens=8192,
     )
