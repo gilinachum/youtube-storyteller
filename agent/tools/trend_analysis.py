@@ -63,7 +63,7 @@ def trend_analysis(topic_area: str) -> str:
                 "Content-Type": "application/json",
             },
             json={
-                "model": "sonar-pro",
+                "model": "sonar",
                 "messages": [
                     {
                         "role": "system",
@@ -79,7 +79,7 @@ def trend_analysis(topic_area: str) -> str:
                     },
                 ],
             },
-            timeout=30,
+            timeout=15,
         )
         response.raise_for_status()
         data = response.json()

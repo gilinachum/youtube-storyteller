@@ -97,28 +97,66 @@ def _is_youtube_url(url: str) -> bool:
 
 
 @tool
-def analyze_youtube_video(youtube_url: str, analysis_focus: str = "") -> str:
-    """Analyze an existing YouTube video using Gemini video understanding.
+def analyze_youtube_video(youtube_url: str = "", analysis_focus: str = "", youtube_urls: list = None) -> str:
+    """Analyze one or more YouTube videos using Gemini video understanding.
 
-    Use this when you need to understand what an existing YouTube video covers,
-    its structure, style, or any other aspect. Useful for:
+    Use this when you need to understand what existing YouTube videos cover,
+    their structure, style, or any other aspect. Useful for:
     - Understanding a reference video the user shared
     - Analyzing competitor content
     - Reviewing the user's own past videos for consistency
     - Planning sequel/follow-up videos
     - Enriching research results when YouTube URLs are found
 
+    IMPORTANT: When analyzing multiple videos, pass them ALL in youtube_urls
+    to analyze them in parallel (much faster than calling this tool multiple times).
+
     Args:
-        youtube_url: Full YouTube URL (youtube.com/watch?v=, youtu.be/, or youtube.com/shorts/)
+        youtube_url: Single YouTube URL (for backwards compatibility).
         analysis_focus: Optional specific focus for the analysis.
             Examples: "structure and pacing", "hook and retention",
             "thumbnail and title strategy", "audience and level".
             If empty, returns comprehensive general analysis.
+        youtube_urls: List of YouTube URLs to analyze in parallel.
+            Use this when you have 2+ videos to analyze.
 
     Returns:
         JSON with structured video analysis including summary, topics,
         structure breakdown, style notes, audience level, and recommendations.
     """
+    import concurrent.futures
+
+    # Collect all URLs
+    urls = []
+    if youtube_urls:
+        urls.extend(youtube_urls)
+    if youtube_url and youtube_url not in urls:
+        urls.append(youtube_url)
+
+    if not urls:
+        return json.dumps({"success": False, "error": "No YouTube URL provided"}, ensure_ascii=False)
+
+    # Single URL — run directly
+    if len(urls) == 1:
+        return _analyze_single_video(urls[0], analysis_focus)
+
+    # Multiple URLs — run in parallel
+    results = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+        futures = {executor.submit(_analyze_single_video, url, analysis_focus): url for url in urls[:3]}
+        for future in concurrent.futures.as_completed(futures):
+            url = futures[future]
+            try:
+                result = future.result(timeout=ANALYSIS_TIMEOUT_SECONDS)
+                results.append(json.loads(result))
+            except Exception as e:
+                results.append({"success": False, "video_url": url, "error": str(e)})
+
+    return json.dumps({"success": True, "videos": results}, ensure_ascii=False, indent=2)
+
+
+def _analyze_single_video(youtube_url: str, analysis_focus: str = "") -> str:
+    """Analyze a single YouTube video (internal implementation)."""
     from google.genai import types
 
     # Validate URL

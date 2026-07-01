@@ -232,7 +232,7 @@ You can **watch and analyze existing YouTube videos** to inform content planning
 
 When deep_research results contain YouTube video URLs:
 1. Identify the 2-3 most relevant videos (by title/context match to the topic)
-2. Call `analyze_youtube_video` on each one
+2. Call `analyze_youtube_video` ONCE with `youtube_urls=[url1, url2, url3]` — they run in parallel
 3. Include the video insights in your research summary:
    - What angle each video took
    - What content level (L100-L400) they targeted
