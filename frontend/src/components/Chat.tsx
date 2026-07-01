@@ -245,6 +245,8 @@ export default function Chat({ email, onLogout, initialSessionId }: Props) {
         setStreamingContent('')
         setProgressLabel('')
         abortControllerRef.current = null
+        // Clear draft only after agent responded successfully
+        try { localStorage.removeItem('storyteller-draft-message') } catch { /* ignore */ }
         // Refresh sessions (immediate + delayed to catch name_session updates)
         listSessions().then(setSessions).catch(console.error)
         setTimeout(() => listSessions().then(setSessions).catch(console.error), 2000)

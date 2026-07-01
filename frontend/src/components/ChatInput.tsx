@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo } from 'react'
+import { useState, useRef, useMemo, useEffect, useCallback } from 'react'
 
 interface Props {
   onSend: (message: string, files?: UploadedFile[]) => void
@@ -13,8 +13,18 @@ export interface UploadedFile {
   file_id: string
 }
 
+const DRAFT_KEY = 'storyteller-draft-message'
+const DRAFT_DEBOUNCE_MS = 300
+
 export default function ChatInput({ onSend, disabled, onUpload, onTranscribe }: Props) {
-  const [text, setText] = useState('')
+  const [text, setText] = useState(() => {
+    // Restore draft from localStorage on mount
+    try {
+      return localStorage.getItem(DRAFT_KEY) || ''
+    } catch {
+      return ''
+    }
+  })
   const [attachedFiles, setAttachedFiles] = useState<UploadedFile[]>([])
   const [uploading, setUploading] = useState(false)
   const [recording, setRecording] = useState(false)
@@ -40,6 +50,30 @@ export default function ChatInput({ onSend, disabled, onUpload, onTranscribe }: 
     return 'rtl'
   }, [text])
 
+  // Persist draft to localStorage (debounced)
+  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const saveDraft = useCallback((value: string) => {
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current)
+    draftTimerRef.current = setTimeout(() => {
+      try {
+        if (value.trim()) {
+          localStorage.setItem(DRAFT_KEY, value)
+        } else {
+          localStorage.removeItem(DRAFT_KEY)
+        }
+      } catch { /* quota exceeded — ignore */ }
+    }, DRAFT_DEBOUNCE_MS)
+  }, [])
+
+  // Auto-resize textarea on mount if restoring a draft
+  useEffect(() => {
+    if (text && textareaRef.current) {
+      textareaRef.current.style.height = 'auto'
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // only on mount
+
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault()
     const trimmed = text.trim()
@@ -47,6 +81,8 @@ export default function ChatInput({ onSend, disabled, onUpload, onTranscribe }: 
     onSend(trimmed, attachedFiles.length > 0 ? attachedFiles : undefined)
     setText('')
     setAttachedFiles([])
+    // Cancel any pending debounced save (don't clear draft yet — Chat clears after agent responds)
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current)
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
   }
 
@@ -308,7 +344,7 @@ export default function ChatInput({ onSend, disabled, onUpload, onTranscribe }: 
                 ref={textareaRef}
                 dir={textDir}
                 value={text}
-                onChange={e => setText(e.target.value)}
+                onChange={e => { setText(e.target.value); saveDraft(e.target.value) }}
                 onKeyDown={handleKeyDown}
                 onInput={handleInput}
                 placeholder="כתוב לי כאן..."
