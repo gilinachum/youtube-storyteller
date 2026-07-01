@@ -2,6 +2,7 @@
 import json
 import os
 import logging
+from urllib.parse import quote
 import boto3
 from botocore.config import Config
 from boto3.dynamodb.conditions import Key
@@ -396,7 +397,7 @@ def download_file(session_id: str, file_id: str, email: str):
         Params={
             "Bucket": UPLOAD_BUCKET,
             "Key": target_file["s3_key"],
-            "ResponseContentDisposition": f'attachment; filename="{target_file["filename"]}"',
+            "ResponseContentDisposition": f"attachment; filename*=UTF-8''{quote(target_file['filename'])}",
         },
         ExpiresIn=604800,  # 7 days (S3 max)
     )

@@ -5,6 +5,7 @@ Generates a video plan document, uploads to S3, and returns a download link.
 
 import os
 import uuid
+from urllib.parse import quote as url_quote
 import boto3
 from datetime import datetime, timezone
 from strands import tool
@@ -112,7 +113,7 @@ def make_export_document_tool(email: str, session_id: str):
                 Key=s3_key,
                 Body=document.encode("utf-8"),
                 ContentType="text/markdown; charset=utf-8",
-                ContentDisposition=f'attachment; filename="{filename}"',
+                ContentDisposition=f"attachment; filename*=UTF-8''{url_quote(filename)}",
             )
 
             # Track file in session record
