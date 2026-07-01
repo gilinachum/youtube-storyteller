@@ -22,8 +22,15 @@ const TOKEN_KEY = 'storyteller-id-token'
 const EXPIRY_KEY = 'storyteller-token-expiry'
 const EMAIL_KEY = 'storyteller-email'
 const NAME_KEY = 'storyteller-name'
+const REFRESH_KEY = 'storyteller-refresh-token'
 const PKCE_KEY = 'storyteller-pkce-verifier'
 const STATE_KEY = 'storyteller-oauth-state'
+
+// Refresh buffer: refresh 2 minutes before expiry to avoid any disruption
+const REFRESH_BUFFER_MS = 2 * 60 * 1000
+// Track in-flight refresh to avoid duplicate requests
+let _refreshPromise: Promise<boolean> | null = null
+let _refreshTimer: ReturnType<typeof setTimeout> | null = null
 
 // ─── PKCE helpers ───────────────────────────────────────────────────────────
 function base64urlEncode(bytes: Uint8Array): string {
@@ -63,9 +70,17 @@ function getFederateAuth(): AuthInfo | null {
   const idToken = sessionStorage.getItem(TOKEN_KEY)
   const expiry = parseInt(sessionStorage.getItem(EXPIRY_KEY) || '0', 10)
   if (!idToken || !expiry) return null
-  if (expiry < Date.now() + 60 * 1000) {
+  // Token completely expired (past expiry) — clear
+  if (expiry < Date.now()) {
     clearFederateAuth()
     return null
+  }
+  // Token still valid — trigger background refresh if close to expiry
+  if (expiry < Date.now() + REFRESH_BUFFER_MS) {
+    silentRefresh() // fire-and-forget
+  } else if (!_refreshTimer) {
+    // Schedule proactive refresh for later
+    scheduleRefresh(expiry)
   }
   return {
     email: sessionStorage.getItem(EMAIL_KEY) || '',
@@ -78,17 +93,94 @@ function clearFederateAuth(): void {
   sessionStorage.removeItem(EXPIRY_KEY)
   sessionStorage.removeItem(EMAIL_KEY)
   sessionStorage.removeItem(NAME_KEY)
+  sessionStorage.removeItem(REFRESH_KEY)
+  if (_refreshTimer) {
+    clearTimeout(_refreshTimer)
+    _refreshTimer = null
+  }
 }
 
 function getFederateToken(): string | null {
   const idToken = sessionStorage.getItem(TOKEN_KEY)
   const expiry = parseInt(sessionStorage.getItem(EXPIRY_KEY) || '0', 10)
   if (!idToken || !expiry) return null
-  if (expiry < Date.now() + 60 * 1000) {
+  // Token completely expired
+  if (expiry < Date.now()) {
     clearFederateAuth()
     return null
   }
+  // Trigger background refresh if close to expiry
+  if (expiry < Date.now() + REFRESH_BUFFER_MS) {
+    silentRefresh() // fire-and-forget
+  }
   return idToken
+}
+
+/**
+ * Silently refresh the id_token using the stored refresh_token.
+ * Returns true if refresh succeeded, false otherwise.
+ * Deduplicates concurrent calls.
+ */
+async function silentRefresh(): Promise<boolean> {
+  if (_refreshPromise) return _refreshPromise
+
+  _refreshPromise = (async () => {
+    const refreshToken = sessionStorage.getItem(REFRESH_KEY)
+    if (!refreshToken) return false
+
+    try {
+      const res = await fetch('/api/auth/refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      })
+
+      if (!res.ok) {
+        // Refresh token rejected (expired/revoked) — force re-auth
+        clearFederateAuth()
+        return false
+      }
+
+      const data = await res.json() as {
+        id_token: string
+        expires_in: number
+        refresh_token?: string
+      }
+      if (!data.id_token) {
+        clearFederateAuth()
+        return false
+      }
+
+      const claims = decodeIdToken(data.id_token)
+      const expiresAt = claims.exp || (Date.now() + data.expires_in * 1000)
+
+      sessionStorage.setItem(TOKEN_KEY, data.id_token)
+      sessionStorage.setItem(EXPIRY_KEY, String(expiresAt))
+      sessionStorage.setItem(EMAIL_KEY, claims.email)
+      sessionStorage.setItem(NAME_KEY, claims.name)
+      if (data.refresh_token) {
+        sessionStorage.setItem(REFRESH_KEY, data.refresh_token)
+      }
+
+      // Schedule next refresh
+      scheduleRefresh(expiresAt)
+      return true
+    } catch {
+      // Network failure — schedule a retry in 30s
+      if (_refreshTimer) clearTimeout(_refreshTimer)
+      _refreshTimer = setTimeout(() => { silentRefresh() }, 30_000)
+      return false
+    }
+  })().finally(() => { _refreshPromise = null })
+
+  return _refreshPromise
+}
+
+/** Schedule a proactive refresh 2 minutes before the token expires. */
+function scheduleRefresh(expiresAt: number): void {
+  if (_refreshTimer) clearTimeout(_refreshTimer)
+  const delay = Math.max(expiresAt - Date.now() - REFRESH_BUFFER_MS, 10_000)
+  _refreshTimer = setTimeout(() => { silentRefresh() }, delay)
 }
 
 // ─── Public API ─────────────────────────────────────────────────────────────
@@ -208,7 +300,7 @@ export async function handleCallback(): Promise<AuthInfo | null> {
     const text = await res.text()
     throw new Error(`Token exchange failed (${res.status}): ${text}`)
   }
-  const data = await res.json() as { id_token: string; expires_in: number }
+  const data = await res.json() as { id_token: string; expires_in: number; refresh_token?: string }
   if (!data.id_token) {
     throw new Error('No id_token in response')
   }
@@ -220,6 +312,12 @@ export async function handleCallback(): Promise<AuthInfo | null> {
   sessionStorage.setItem(EXPIRY_KEY, String(expiresAt))
   sessionStorage.setItem(EMAIL_KEY, claims.email)
   sessionStorage.setItem(NAME_KEY, claims.name)
+  if (data.refresh_token) {
+    sessionStorage.setItem(REFRESH_KEY, data.refresh_token)
+  }
+
+  // Schedule proactive background refresh
+  scheduleRefresh(expiresAt)
 
   // Clean up one-shot values
   sessionStorage.removeItem(PKCE_KEY)
