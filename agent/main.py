@@ -11,9 +11,10 @@ import logging
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from strands import Agent
-from strands.models import BedrockModel
+from strands.models import BedrockModel, CacheConfig
 from strands import AgentSkills
 
+from agent.model_config import get_model_config, ModelConfig
 from agent.system_prompt import build_system_prompt
 from agent.tools import (
     content_fetch,
@@ -32,7 +33,6 @@ from agent.tools.mark_job_consumed import make_mark_job_consumed_tool
 from agent.tools.read_file import make_read_file_tool
 from agent.tools.generate_qr_code import make_generate_qr_code_tool
 from agent.memory_retrieval import retrieve_long_term_memories, format_memories_for_prompt
-from agent.research_agent import create_research_agent
 from agent.thumbnail_agent import create_thumbnail_agent
 from agent.tools.recall_session_details import make_recall_session_details_tool
 
@@ -49,18 +49,66 @@ def email_to_actor_id(email: str) -> str:
     return email.replace("@", "-at-").replace("+", "-").replace(".", "-")
 
 
-def create_agent(email: str = "", session_id: str = "", user_message: str = None) -> Agent:
-    """Create and configure the StoryTeller agent."""
+def _create_model(config: ModelConfig):
+    """Create the model provider based on ModelConfig."""
     from botocore.config import Config as BotoConfig
 
-    model = BedrockModel(
-        model_id="us.anthropic.claude-sonnet-4-6",
-        region_name=os.environ.get("AWS_REGION", "us-west-2"),
-        max_tokens=8192,
-        boto_client_config=BotoConfig(read_timeout=300),  # 5 min for long doc generation
-    )
+    if config.provider == "openai-compatible":
+        from strands.models.openai import OpenAIModel
+        import boto3 as _boto3
+
+        logger.info("Using OpenAI-compatible provider: model=%s, base_url=%s", config.model_id, config.base_url)
+
+        # Fetch API key from Secrets Manager
+        api_key = None
+        if config.api_key_secret:
+            try:
+                sm = _boto3.client("secretsmanager", region_name=os.environ.get("AWS_REGION", "us-west-2"))
+                secret_resp = sm.get_secret_value(SecretId=config.api_key_secret)
+                api_key = secret_resp["SecretString"]
+                logger.info("Loaded API key from Secrets Manager: %s", config.api_key_secret)
+            except Exception as e:
+                logger.error("Failed to get API key from Secrets Manager (%s): %s", config.api_key_secret, e)
+                raise
+
+        params = {"max_tokens": config.max_tokens}
+        if config.tool_choice != "auto":
+            params["tool_choice"] = config.tool_choice
+
+        model = OpenAIModel(
+            client_args={
+                "api_key": api_key,
+                "base_url": config.base_url,
+            },
+            model_id=config.model_id,
+            params=params,
+        )
+    else:
+        # Default: Bedrock Converse API
+        logger.info("Using Bedrock provider: model=%s, region=%s", config.model_id, config.region)
+
+        model = BedrockModel(
+            model_id=config.model_id,
+            region_name=config.region,
+            max_tokens=config.max_tokens,
+            boto_client_config=BotoConfig(read_timeout=300),
+            cache_config=CacheConfig(strategy="auto"),
+            cache_tools="default",
+        )
+
+    return model
+
+
+def create_agent(email: str = "", session_id: str = "", user_message: str = None) -> Agent:
+    """Create and configure the StoryTeller agent."""
+    model_cfg = get_model_config()
+    model = _create_model(model_cfg)
 
     system_prompt = build_system_prompt()
+
+    # Prepend model-specific preamble if configured
+    if model_cfg.system_preamble:
+        system_prompt = model_cfg.system_preamble + system_prompt
 
     # Retrieve long-term memories to inject as the first user turn (not system prompt).
     # Memories contain user-generated content from past sessions and must NOT be placed
@@ -85,18 +133,9 @@ def create_agent(email: str = "", session_id: str = "", user_message: str = None
     generate_qr_code = make_generate_qr_code_tool(email, session_id)
     recall_session_details = make_recall_session_details_tool(email)
 
-    # Create research sub-agent as a tool
-    research_agent = create_research_agent()
-    research_tool = research_agent.as_tool(
-        name="deep_research",
-        description=(
-            "Run comprehensive research on a topic for video planning. "
-            "This tool coordinates web search, trend analysis, and URL scraping "
-            "to produce a structured research brief. Use this instead of calling "
-            "web_research/trend_analysis/content_fetch individually — it's faster "
-            "and more thorough. Pass a clear research request describing what to find."
-        ),
-    )
+    # Deep research tool — runs web + trends in parallel
+    from agent.tools.deep_research import deep_research
+    research_tool = deep_research
 
     # Create thumbnail sub-agent as a tool (preserve_context for iterative design)
     thumbnail_agent = create_thumbnail_agent(email=email, session_id=session_id)
@@ -138,25 +177,28 @@ def create_agent(email: str = "", session_id: str = "", user_message: str = None
     knowledge_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "knowledge")
     skills_plugin = AgentSkills(skills=knowledge_dir)
 
+    # Build tools list
+    agent_tools = [
+        pdf_extract,
+        pptx_extract,
+        name_session,
+        export_document,
+        save_user_photo,
+        start_transcription,
+        list_pending_jobs,
+        mark_job_consumed,
+        read_file,
+        analyze_youtube_video,
+        generate_qr_code,
+        research_tool,
+        thumbnail_tool,
+        recall_session_details,
+    ]
+
     agent = Agent(
         model=model,
         system_prompt=system_prompt,
-        tools=[
-            pdf_extract,
-            pptx_extract,
-            name_session,
-            export_document,
-            save_user_photo,
-            start_transcription,
-            list_pending_jobs,
-            mark_job_consumed,
-            read_file,
-            analyze_youtube_video,
-            generate_qr_code,
-            research_tool,
-            thumbnail_tool,
-            recall_session_details,
-        ],
+        tools=agent_tools,
         plugins=[skills_plugin],
         session_manager=session_manager,
     )
@@ -187,10 +229,8 @@ def main():
     agent = create_agent()
 
     if len(sys.argv) > 1:
-        # Run with a specific prompt from command line
         prompt = " ".join(sys.argv[1:])
     else:
-        # Default test prompt
         prompt = "I want to make a video about Amazon Bedrock AgentCore Memory"
 
     print(f"\n{'='*60}")

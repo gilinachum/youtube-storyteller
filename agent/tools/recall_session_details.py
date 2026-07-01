@@ -80,7 +80,7 @@ def _load_session_conversation(memory_id: str, actor_id: str, session_id: str) -
 def _get_extraction_agent() -> Agent:
     """Create a lightweight extraction sub-agent."""
     model = BedrockModel(
-        model_id="us.anthropic.claude-sonnet-4-6",
+        model_id="us.amazon.nova-2-lite-v1:0",
         region_name=REGION,
         max_tokens=2000,
     )
