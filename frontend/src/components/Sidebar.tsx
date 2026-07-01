@@ -13,11 +13,26 @@ interface Props {
   onClose: () => void
 }
 
+const MIN_WIDTH = 200
+const MAX_WIDTH = 480
+const DEFAULT_WIDTH = 384 // 256 * 1.5 = 384px
+
 export default function Sidebar({ sessions, currentSessionId, onSelect, onNewChat, onDelete, email, onLogout, isOpen, onClose }: Props) {
   // Track sessions pending deletion (sessionId -> timeout id)
   const [pendingDeletes, setPendingDeletes] = useState<Map<string, ReturnType<typeof setTimeout>>>(new Map())
   const pendingRef = useRef(pendingDeletes)
   pendingRef.current = pendingDeletes
+
+  // Resizable sidebar width (desktop only)
+  const [width, setWidth] = useState(() => {
+    try {
+      const saved = localStorage.getItem('storyteller-sidebar-width')
+      return saved ? Math.min(Math.max(parseInt(saved), MIN_WIDTH), MAX_WIDTH) : DEFAULT_WIDTH
+    } catch { return DEFAULT_WIDTH }
+  })
+  const dragging = useRef(false)
+  const startX = useRef(0)
+  const startWidth = useRef(width)
 
   // Cleanup timers on unmount
   useEffect(() => {
@@ -25,6 +40,40 @@ export default function Sidebar({ sessions, currentSessionId, onSelect, onNewCha
       pendingRef.current.forEach(timer => clearTimeout(timer))
     }
   }, [])
+
+  // Drag-to-resize handlers
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    dragging.current = true
+    startX.current = e.clientX
+    startWidth.current = width
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+
+    const handleMouseMove = (ev: MouseEvent) => {
+      if (!dragging.current) return
+      // RTL: dragging left = increase width
+      const diff = startX.current - ev.clientX
+      const newWidth = Math.min(Math.max(startWidth.current + diff, MIN_WIDTH), MAX_WIDTH)
+      setWidth(newWidth)
+    }
+    const handleMouseUp = () => {
+      dragging.current = false
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+      // Persist
+      try { localStorage.setItem('storyteller-sidebar-width', String(width)) } catch {}
+    }
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+  }, [width])
+
+  // Save width when it changes
+  useEffect(() => {
+    try { localStorage.setItem('storyteller-sidebar-width', String(width)) } catch {}
+  }, [width])
 
   const handleSelect = (sessionId: string) => {
     if (pendingDeletes.has(sessionId)) return // can't select a deleting session
@@ -74,13 +123,19 @@ export default function Sidebar({ sessions, currentSessionId, onSelect, onNewCha
 
       {/* Sidebar drawer */}
       <div
+        style={{ width: isOpen ? undefined : width }}
         className={`
-          fixed top-0 right-0 h-full w-72 bg-gray-900 border-l border-gray-800 flex flex-col z-50
+          fixed top-0 right-0 h-full w-96 bg-gray-900 border-l border-gray-800 flex flex-col z-50
           transform transition-transform duration-300 ease-in-out
           ${isOpen ? 'translate-x-0' : 'translate-x-full'}
-          lg:static lg:translate-x-0 lg:w-64 lg:z-auto
+          lg:static lg:translate-x-0 lg:z-auto
         `}
       >
+        {/* Resize handle — desktop only (left edge in RTL) */}
+        <div
+          onMouseDown={handleMouseDown}
+          className="hidden lg:block absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-brand-500/30 active:bg-brand-500/50 transition-colors z-10"
+        />
         {/* Header */}
         <div className="p-4 border-b border-gray-800 flex items-center gap-2">
           <button
@@ -141,7 +196,7 @@ export default function Sidebar({ sessions, currentSessionId, onSelect, onNewCha
                     }`}
                   >
                     <div className="flex items-center gap-1.5">
-                      <div className="font-medium truncate flex-1">{s.name || 'שיחה חדשה'}</div>
+                      <div className="font-medium line-clamp-2 flex-1">{s.name || 'שיחה חדשה'}</div>
                       {(s._shared || (s.shared_with && s.shared_with.length > 0)) && (
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5 text-brand-400 flex-shrink-0">
                           <path d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
