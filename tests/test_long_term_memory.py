@@ -241,11 +241,10 @@ class TestCreateAgentWithMemory:
     @patch("agent.main.format_memories_for_prompt")
     @patch("agent.main.Agent")
     @patch("agent.main.BedrockModel")
-    @patch("agent.main.create_research_agent")
     @patch("agent.main.create_thumbnail_agent")
     @patch("agent.main.AgentSkills")
     def test_injects_memories_when_user_message_provided(
-        self, mock_skills, mock_thumb, mock_research, mock_model, mock_agent,
+        self, mock_skills, mock_thumb, mock_model, mock_agent,
         mock_format, mock_retrieve
     ):
         """When user_message is provided, should retrieve and inject memories."""
@@ -254,14 +253,21 @@ class TestCreateAgentWithMemory:
         mock_retrieve.return_value = [{"text": "K8s session", "score": 0.9}]
         mock_format.return_value = "# Retrieved Long-Term Memories\n1. K8s session"
 
-        # Mock sub-agents
-        mock_research_agent = MagicMock()
-        mock_research_agent.as_tool.return_value = MagicMock()
-        mock_research.return_value = mock_research_agent
-
+        # Mock thumbnail sub-agent (research is a standalone tool, not a sub-agent — see
+        # agent/tools/deep_research.py, imported inline inside create_agent, nothing to patch)
         mock_thumb_agent = MagicMock()
         mock_thumb_agent.as_tool.return_value = MagicMock()
         mock_thumb.return_value = mock_thumb_agent
+
+        # Agent() returns a mock whose .messages must behave like a real list so
+        # create_agent's agent.messages.insert(0/1, ...) calls actually mutate it —
+        # memories are prepended as a synthetic user/assistant turn in message
+        # history (NOT the system prompt — see create_agent's docstring: keeping
+        # retrieved past-session content in the user turn avoids elevating
+        # user-generated content to instruction authority / prompt injection).
+        mock_agent_instance = MagicMock()
+        mock_agent_instance.messages = []
+        mock_agent.return_value = mock_agent_instance
 
         with patch.dict(os.environ, {"AGENTCORE_MEMORY_ID": ""}):
             create_agent(email="gili@amazon.com", session_id="sess-1", user_message="K8s video")
@@ -269,27 +275,22 @@ class TestCreateAgentWithMemory:
         mock_retrieve.assert_called_once_with("gili@amazon.com", "K8s video")
         mock_format.assert_called_once()
 
-        # Verify Agent was called with enriched system prompt
-        agent_call = mock_agent.call_args
-        system_prompt = agent_call.kwargs.get("system_prompt", "")
-        assert "Retrieved Long-Term Memories" in system_prompt
+        # Verify memories were prepended to message history as a synthetic user turn
+        assert len(mock_agent_instance.messages) == 2
+        assert mock_agent_instance.messages[0]["role"] == "user"
+        assert "Retrieved Long-Term Memories" in mock_agent_instance.messages[0]["content"][0]["text"]
 
     @patch("agent.main.retrieve_long_term_memories")
     @patch("agent.main.Agent")
     @patch("agent.main.BedrockModel")
-    @patch("agent.main.create_research_agent")
     @patch("agent.main.create_thumbnail_agent")
     @patch("agent.main.AgentSkills")
     def test_no_injection_without_user_message(
-        self, mock_skills, mock_thumb, mock_research, mock_model, mock_agent,
+        self, mock_skills, mock_thumb, mock_model, mock_agent,
         mock_retrieve
     ):
         """When user_message is None, should not attempt memory retrieval."""
         from agent.main import create_agent
-
-        mock_research_agent = MagicMock()
-        mock_research_agent.as_tool.return_value = MagicMock()
-        mock_research.return_value = mock_research_agent
 
         mock_thumb_agent = MagicMock()
         mock_thumb_agent.as_tool.return_value = MagicMock()

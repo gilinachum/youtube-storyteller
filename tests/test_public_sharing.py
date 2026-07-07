@@ -6,10 +6,16 @@ import pytest
 from moto import mock_aws
 import boto3
 
-os.environ["SESSIONS_TABLE"] = "test-sessions"
-os.environ["MESSAGES_TABLE"] = "test-messages"
-os.environ["UPLOAD_BUCKET"] = "test-uploads"
-os.environ["AGENTCORE_MEMORY_ID"] = ""  # Disable memory reads for unit tests
+os.environ.setdefault("SESSIONS_TABLE", "test-sessions")
+os.environ.setdefault("MESSAGES_TABLE", "test-messages")
+os.environ.setdefault("UPLOAD_BUCKET", "test-uploads")
+# NOTE: do NOT set AGENTCORE_MEMORY_ID here. This file doesn't exercise memory
+# behavior, so it has no need to force it empty — and doing so with unconditional
+# `os.environ[...] =` (not setdefault, no fixture teardown) permanently clobbers
+# the var for the rest of the pytest session, breaking test_long_term_memory.py's
+# tests that need AGENTCORE_MEMORY_ID set to a real value. If a test in this file
+# ever needs it empty, use `with patch.dict(os.environ, {"AGENTCORE_MEMORY_ID": ""}):`
+# scoped to that test instead of a module-level assignment.
 
 
 def _make_event(method="GET", path="/", body=None, path_params=None, email="owner@test.com"):

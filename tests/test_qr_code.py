@@ -101,14 +101,36 @@ class FakeCodeInterpreter:
 
 @pytest.fixture
 def mock_ci():
-    """Patch CodeInterpreter via sys.modules so the lazy import inside the tool works."""
+    """Patch CodeInterpreter via sys.modules so the lazy import inside the tool works.
+
+    Restores the previous sys.modules state on teardown — otherwise the fake
+    ``bedrock_agentcore`` MagicMock leaks into every other test in the same
+    pytest session and breaks real `from bedrock_agentcore.runtime import ...`
+    imports elsewhere (e.g. agent/runtime_app.py) with a confusing
+    "'bedrock_agentcore' is not a package" error.
+    """
     import sys
     fake_module = MagicMock()
     fake_module.CodeInterpreter = FakeCodeInterpreter
+
+    patched_keys = [
+        "bedrock_agentcore",
+        "bedrock_agentcore.tools",
+        "bedrock_agentcore.tools.code_interpreter_client",
+    ]
+    previous = {key: sys.modules.get(key) for key in patched_keys}
+
     sys.modules["bedrock_agentcore"] = MagicMock()
     sys.modules["bedrock_agentcore.tools"] = MagicMock()
     sys.modules["bedrock_agentcore.tools.code_interpreter_client"] = fake_module
-    yield fake_module
+    try:
+        yield fake_module
+    finally:
+        for key, original in previous.items():
+            if original is None:
+                sys.modules.pop(key, None)
+            else:
+                sys.modules[key] = original
 
 
 @pytest.fixture
@@ -186,13 +208,24 @@ class TestToolOutput:
             raise RuntimeError("Service unavailable")
 
         fake_module.CodeInterpreter = failing_ci
+
+        patched_keys = ["bedrock_agentcore", "bedrock_agentcore.tools", "bedrock_agentcore.tools.code_interpreter_client"]
+        previous = {key: sys.modules.get(key) for key in patched_keys}
+        sys.modules["bedrock_agentcore"] = sys.modules.get("bedrock_agentcore") or MagicMock()
+        sys.modules["bedrock_agentcore.tools"] = sys.modules.get("bedrock_agentcore.tools") or MagicMock()
         sys.modules["bedrock_agentcore.tools.code_interpreter_client"] = fake_module
+        try:
+            tool = make_generate_qr_code_tool("test@example.com", "session-123")
+            result = tool(urls=["https://example.com"])
 
-        tool = make_generate_qr_code_tool("test@example.com", "session-123")
-        result = tool(urls=["https://example.com"])
-
-        assert "❌" in result
-        assert "Code Interpreter" in result or "failed" in result.lower()
+            assert "❌" in result
+            assert "Code Interpreter" in result or "failed" in result.lower()
+        finally:
+            for key, original in previous.items():
+                if original is None:
+                    sys.modules.pop(key, None)
+                else:
+                    sys.modules[key] = original
 
     def test_s3_upload_failure_returns_error(self, mock_ci, mock_dynamo):
         """When S3 upload fails for all URLs."""

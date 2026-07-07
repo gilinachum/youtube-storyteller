@@ -20,6 +20,18 @@ import boto3
 os.environ.setdefault("MESSAGES_TABLE", "test-messages")
 os.environ.setdefault("SESSIONS_TABLE", "test-sessions")
 os.environ.setdefault("UPLOAD_BUCKET", "test-uploads")
+# Pin the region to match every boto3.resource(...) call in this file (all use
+# us-east-1 explicitly below). agent/runtime_app.py binds its module-level
+# `dynamodb` resource ONCE at first import time, reading AWS_REGION /
+# AWS_DEFAULT_REGION (default us-west-2) — if some other test file imports
+# agent.runtime_app first with a different region resolved, this file's tables
+# (created in us-east-1) would silently mismatch and every _ensure_session()
+# call would fail with ResourceNotFoundException. setdefault() here only takes
+# effect if nothing set these yet; explicit pins in other test files still win
+# per normal import-order rules, but this guarantees OUR file is internally
+# consistent when run first or standalone.
+os.environ.setdefault("AWS_REGION", "us-east-1")
+os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
 
 
 
