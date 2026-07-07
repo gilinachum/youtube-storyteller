@@ -3,6 +3,7 @@ import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { getFileDownloadUrl } from '../api'
 import MediaImage from './MediaImage'
+import { InteractiveForm, parseInteractiveBlocks } from './interactive'
 
 const FILE_ICON_MAP: Record<string, string> = {
   pdf: '📕',
@@ -267,8 +268,10 @@ function makeMarkdownComponents(sessionId?: string): Components {
     // Detect media:// protocol — resolve via presigned URL
     if (src && src.startsWith('media://')) {
       const fileId = src.replace('media://', '')
+      console.log(`[ChatMessages:img] Rendering MediaImage for fileId=${fileId}, sessionId=${sessionId}`)
       return <MediaImage fileId={fileId} alt={alt || 'image'} sessionId={sessionId || ''} />
     }
+    console.log(`[ChatMessages:img] Rendering regular img, src=${src?.substring(0, 50)}`)
     return (
       <div className="my-3">
         <img
@@ -303,14 +306,29 @@ interface Props {
   isStreaming?: boolean
   email?: string
   sessionId?: string
+  onSendMessage?: (message: string) => void
+  onPendingFormChange?: (pending: string | null) => void
 }
 
-export default function ChatMessages({ messages, loading, loadingText, progressLabel, streamingContent, isStreaming, email, sessionId }: Props) {
+export default function ChatMessages({ messages, loading, loadingText, progressLabel, streamingContent, isStreaming, email, sessionId, onSendMessage, onPendingFormChange }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const isStickRef = useRef(true)
   // Tracks the previous scrollTop so we can detect user-initiated upward scrolls
   const prevScrollTopRef = useRef(0)
+  // Track which interactive blocks have been responded to
+  const [respondedBlocks, setRespondedBlocks] = useState<Set<string>>(new Set())
+
+  // Memoize parsed interactive blocks — keyed by message content to avoid re-parsing on every render
+  const parsedMessages = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof parseInteractiveBlocks>>()
+    for (const msg of messages) {
+      if (msg.role === 'assistant') {
+        map.set(msg.id, parseInteractiveBlocks(msg.content))
+      }
+    }
+    return map
+  }, [messages])
 
   const markdownComponents = useMemo(() => makeMarkdownComponents(sessionId), [sessionId])
 
@@ -356,7 +374,16 @@ export default function ChatMessages({ messages, loading, loadingText, progressL
 
   return (
     <div ref={containerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto scrollbar-thin px-4 py-6 space-y-4">
-      {messages.map(msg => (
+      {messages.map((msg, msgIndex) => {
+        // Use memoized parsed interactive blocks
+        const isAssistant = msg.role === 'assistant'
+        const parsed = isAssistant ? parsedMessages.get(msg.id) || null : null
+        const textToRender = parsed ? parsed.textContent : msg.content
+        // A block is "responded" if there's a user message after this assistant message
+        const hasUserReplyAfter = isAssistant && msgIndex < messages.length - 1 &&
+          messages[msgIndex + 1]?.role === 'user'
+
+        return (
         <div
           key={msg.id}
         >
@@ -365,12 +392,29 @@ export default function ChatMessages({ messages, loading, loadingText, progressL
               <UserMessage content={msg.content} email={email} />
             ) : (
               <div className="prose-rtl">
-                <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={(url) => url} components={markdownComponents}>{msg.content}</ReactMarkdown>
+                <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={(url) => url} components={markdownComponents}>{textToRender}</ReactMarkdown>
+                {/* Render interactive blocks */}
+                {parsed && parsed.blocks.length > 0 && (
+                  <InteractiveForm
+                    blocks={parsed.blocks}
+                    disabled={hasUserReplyAfter || loading}
+                    respondedBlocks={respondedBlocks}
+                    onSubmit={(answers) => {
+                      if (onSendMessage && !loading) {
+                        const blockIds = parsed.blocks.map(b => b.id)
+                        setRespondedBlocks(prev => new Set([...prev, ...blockIds]))
+                        onSendMessage(answers)
+                      }
+                    }}
+                    onPendingChange={onPendingFormChange}
+                  />
+                )}
               </div>
             )}
           </div>
         </div>
-      ))}
+        )
+      })}
 
       {/* Loading indicator — before any streaming content arrives */}
       {loading && (

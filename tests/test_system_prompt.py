@@ -108,3 +108,38 @@ class TestSystemPrompt:
         from agent.system_prompt import build_system_prompt
         prompt = build_system_prompt()
         assert "virality" in prompt.lower() or "ויראלי" in prompt or "retention" in prompt.lower()
+
+    def test_interactive_ui_blocks_section(self):
+        """Verify interactive UI block instructions and examples render correctly."""
+        from agent.system_prompt import build_system_prompt
+        prompt = build_system_prompt()
+        # Section exists
+        assert "Interactive UI Blocks" in prompt
+        # Examples render with actual JSON (not Python format specifier errors)
+        assert "ui:interactive" in prompt
+        assert '"type":"choices"' in prompt
+        assert '"type":"grid"' in prompt
+        assert '"type":"confirm"' in prompt
+        # Multiple questions pattern is documented
+        assert "CRITICAL" in prompt
+        assert "Structure questions sequentially" in prompt
+
+    def test_system_prompt_no_unresolved_format_specifiers(self):
+        """Ensure no stray curly braces that would crash Python f-string formatting.
+
+        This catches the bug where JSON examples with {"id":"..."} inside an
+        f-string cause ValueError: Invalid format specifier.
+        """
+        from agent.system_prompt import build_system_prompt
+        # If this call succeeds without ValueError, the f-string is valid
+        prompt = build_system_prompt()
+        # Additionally verify the JSON examples are well-formed (single braces in output)
+        assert '{"type":' in prompt  # Should be single braces in the rendered output
+        assert '{{' not in prompt  # Double braces should NOT appear in the final output
+
+    def test_search_youtube_videos_documented(self):
+        """Verify the search_youtube_videos tool is documented in the prompt."""
+        from agent.system_prompt import build_system_prompt
+        prompt = build_system_prompt()
+        assert "search_youtube_videos" in prompt
+        assert "grid" in prompt.lower()

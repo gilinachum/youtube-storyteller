@@ -24,6 +24,7 @@ from agent.tools import (
     trend_analysis,
 )
 from agent.tools.analyze_youtube_video import analyze_youtube_video
+from agent.tools.search_youtube_videos import search_youtube_videos
 from agent.tools.session_manager import make_name_session_tool
 from agent.tools.export_document import make_export_document_tool
 from agent.tools.save_user_photo import make_save_user_photo_tool
@@ -189,6 +190,7 @@ def create_agent(email: str = "", session_id: str = "", user_message: str = None
         mark_job_consumed,
         read_file,
         analyze_youtube_video,
+        search_youtube_videos,
         generate_qr_code,
         research_tool,
         thumbnail_tool,

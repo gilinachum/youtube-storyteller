@@ -20,11 +20,14 @@ export default function MediaImage({ fileId, alt, sessionId }: Props) {
   useEffect(() => {
     if (attempted.current) return
     attempted.current = true
+    console.log(`[MediaImage] Fetching presigned URL for fileId=${fileId}, sessionId=${sessionId}`)
     ;(async () => {
       try {
         const downloadUrl = await getFileDownloadUrl(sessionId, fileId)
+        console.log(`[MediaImage] Got URL for ${fileId}: ${downloadUrl?.substring(0, 60)}...`)
         setUrl(downloadUrl)
-      } catch {
+      } catch (err) {
+        console.error(`[MediaImage] Failed to fetch URL for ${fileId}:`, err)
         setError(true)
       }
     })()

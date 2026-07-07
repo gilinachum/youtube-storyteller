@@ -14,6 +14,7 @@ from .list_pending_jobs import make_list_pending_jobs_tool
 from .mark_job_consumed import make_mark_job_consumed_tool
 from .read_file import make_read_file_tool
 from .analyze_youtube_video import analyze_youtube_video
+from .search_youtube_videos import search_youtube_videos
 
 __all__ = [
     "content_fetch",
@@ -30,4 +31,5 @@ __all__ = [
     "make_mark_job_consumed_tool",
     "make_read_file_tool",
     "analyze_youtube_video",
+    "search_youtube_videos",
 ]

@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { streamChat, listSessions, getSessionMessages, uploadFile, shareSession, getFileDownloadUrl, transcribeAudio, deleteSession, setSessionVisibility, unshareSession } from '../api'
 import { useJobPolling } from '../hooks/useJobPolling'
+import { bufferInteractiveStream } from '../utils/bufferInteractiveStream'
 import type { Session, FileRecord } from '../api'
 import ChatMessages from './ChatMessages'
 import ChatInput from './ChatInput'
@@ -58,6 +59,7 @@ export default function Chat({ email, onLogout, initialSessionId }: Props) {
     return saved || crypto.randomUUID()
   })
   const [loading, setLoading] = useState(false)
+  const [pendingFormAnswer, setPendingFormAnswer] = useState<string | null>(null)
   const [streamingContent, setStreamingContent] = useState('')
   const [progressLabel, setProgressLabel] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -69,6 +71,7 @@ export default function Chat({ email, onLogout, initialSessionId }: Props) {
   const [access, setAccess] = useState<'owner' | 'collaborator' | 'viewer'>('owner')
   const [visibility, setVisibility] = useState<'private' | 'public'>('private')
   const abortControllerRef = useRef<AbortController | null>(null)
+  const streamingMsgIdRef = useRef<string>(crypto.randomUUID())
   // Stable ref so handleSend's onDone closure can call checkNow without stale captures
   const checkNowRef = useRef<() => Promise<void>>(() => Promise.resolve())
   // Stable ref so handleJobsReady can call handleSend without circular hook deps
@@ -202,6 +205,7 @@ export default function Chat({ email, onLogout, initialSessionId }: Props) {
     abortControllerRef.current = controller
 
     const streamingMsgId = crypto.randomUUID()
+    streamingMsgIdRef.current = streamingMsgId
 
     await streamChat({
       email,
@@ -476,11 +480,18 @@ export default function Chat({ email, onLogout, initialSessionId }: Props) {
   }, [])
 
   // Compute display messages — include streaming content as a live message
-  const displayMessages = streamingContent
+  // Buffer incomplete interactive blocks so the user never sees raw <!-- ui:interactive ... -->
+  const streamingDisplay = (() => {
+    if (!streamingContent) return ''
+    const parsed = parseStreamData(streamingContent)
+    return bufferInteractiveStream(parsed)
+  })()
+
+  const displayMessages = streamingDisplay
     ? [...messages, {
-        id: 'streaming',
+        id: streamingMsgIdRef.current,
         role: 'assistant' as const,
-        content: parseStreamData(streamingContent),
+        content: streamingDisplay,
         timestamp: Date.now(),
       }]
     : messages
@@ -582,13 +593,15 @@ export default function Chat({ email, onLogout, initialSessionId }: Props) {
           isStreaming={loading && !!streamingContent}
           email={email}
           sessionId={currentSessionId}
+          onSendMessage={(text) => { setPendingFormAnswer(null); handleSend(text) }}
+          onPendingFormChange={setPendingFormAnswer}
         />
         {access === 'viewer' ? (
           <div className="border-t border-gray-800 px-4 py-3 text-center text-sm text-yellow-400 bg-gray-900/50">
             📖 שיחה לקריאה בלבד
           </div>
         ) : (
-          <ChatInput onSend={handleSend} disabled={loading} onUpload={handleUpload} onTranscribe={handleTranscribe} />
+          <ChatInput onSend={handleSend} disabled={loading} onUpload={handleUpload} onTranscribe={handleTranscribe} pendingFormAnswer={pendingFormAnswer} onClearPending={() => setPendingFormAnswer(null)} />
         )}
       </div>
 

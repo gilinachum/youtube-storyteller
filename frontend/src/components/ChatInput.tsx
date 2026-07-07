@@ -5,6 +5,9 @@ interface Props {
   disabled: boolean
   onUpload: (file: File) => Promise<UploadedFile | null>
   onTranscribe?: (audioBlob: Blob) => Promise<string>
+  /** Pending form answer from interactive blocks */
+  pendingFormAnswer?: string | null
+  onClearPending?: () => void
 }
 
 export interface UploadedFile {
@@ -16,7 +19,7 @@ export interface UploadedFile {
 const DRAFT_KEY = 'storyteller-draft-message'
 const DRAFT_DEBOUNCE_MS = 300
 
-export default function ChatInput({ onSend, disabled, onUpload, onTranscribe }: Props) {
+export default function ChatInput({ onSend, disabled, onUpload, onTranscribe, pendingFormAnswer, onClearPending }: Props) {
   const [text, setText] = useState(() => {
     // Restore draft from localStorage on mount
     try {
@@ -77,10 +80,17 @@ export default function ChatInput({ onSend, disabled, onUpload, onTranscribe }: 
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault()
     const trimmed = text.trim()
+    // If there's a pending form answer and no typed text, send the form answer
+    if (!trimmed && !attachedFiles.length && pendingFormAnswer) {
+      onSend(pendingFormAnswer)
+      onClearPending?.()
+      return
+    }
     if ((!trimmed && attachedFiles.length === 0) || disabled) return
     onSend(trimmed, attachedFiles.length > 0 ? attachedFiles : undefined)
     setText('')
     setAttachedFiles([])
+    onClearPending?.()
     // Cancel any pending debounced save (don't clear draft yet — Chat clears after agent responds)
     if (draftTimerRef.current) clearTimeout(draftTimerRef.current)
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
@@ -355,12 +365,12 @@ export default function ChatInput({ onSend, disabled, onUpload, onTranscribe }: 
             </div>
             <button
               type="submit"
-              disabled={disabled || (!text.trim() && attachedFiles.length === 0)}
-              className="p-3 rounded-xl bg-brand-600 hover:bg-brand-500 disabled:bg-gray-700 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+              disabled={disabled || (!text.trim() && attachedFiles.length === 0 && !pendingFormAnswer)}
+              className="w-10 h-10 rounded-full bg-brand-600 hover:bg-brand-500 disabled:bg-gray-700 disabled:cursor-not-allowed transition-colors flex-shrink-0 flex items-center justify-center"
               title="שלח"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 text-white rotate-180">
-                <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 text-white">
+                <path d="M12 19V5M5 12l7-7 7 7" />
               </svg>
             </button>
           </>

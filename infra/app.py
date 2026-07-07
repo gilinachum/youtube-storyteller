@@ -45,6 +45,7 @@ from stacks.data_stack import DataStack
 from stacks.api_stack import ApiStack
 from stacks.frontend_stack import FrontendStack
 from stacks.backup_stack import BackupStack
+from stacks.evaluations_stack import EvaluationsStack
 
 app = cdk.App()
 
@@ -117,6 +118,16 @@ backup_stack = BackupStack(app, f"{cfg['prefix']}-backup",
     table_arns=table_arns,
     env=env,
 )
+
+# ── Evaluations stack (AgentCore online evaluation) ─────────────────────
+runtime_id = os.environ.get("AGENT_RUNTIME_ID", "")
+if runtime_id:
+    evaluations_stack = EvaluationsStack(app, f"{sp}Evaluations" if sp[0].isupper() else f"{cfg['prefix']}-evaluations",
+        prefix=cfg["prefix"],
+        runtime_id=runtime_id,
+        sampling_percentage=100.0,
+        env=env,
+    )
 
 cdk.Tags.of(app).add("Project", "StoryTeller")
 cdk.Tags.of(app).add("Stage", stage)

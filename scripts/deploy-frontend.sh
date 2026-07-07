@@ -1,8 +1,8 @@
 #!/bin/bash
 # deploy-frontend.sh — Build and deploy frontend to S3 + invalidate CloudFront
-# Usage: ./scripts/deploy-frontend.sh
+# Usage: ./scripts/deploy-frontend.sh [dev|prod]
 #
-# Required env vars (or set in .env):
+# Required env vars (set in .env.<stage>):
 #   FRONTEND_S3_BUCKET  — S3 bucket for frontend assets
 #   CF_DISTRIBUTION_ID  — CloudFront distribution ID
 set -euo pipefail
@@ -11,12 +11,18 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 FRONTEND_DIR="$PROJECT_DIR/frontend"
 
-# Load .env if present
-if [ -f "$PROJECT_DIR/.env.prod" ]; then
-  source "$PROJECT_DIR/.env.prod"
-elif [ -f "$PROJECT_DIR/.env.dev" ]; then
-  source "$PROJECT_DIR/.env.dev"
+# Load .env for stage (default: dev)
+STAGE="${1:-dev}"
+ENV_FILE="$PROJECT_DIR/.env.$STAGE"
+if [ -f "$ENV_FILE" ]; then
+  set -a
+  source "$ENV_FILE"
+  set +a
+else
+  echo "❌ $ENV_FILE not found"
+  exit 1
 fi
+echo "🎯 Stage: $STAGE"
 
 S3_BUCKET="${FRONTEND_S3_BUCKET:?Set FRONTEND_S3_BUCKET env var}"
 CF_DISTRIBUTION="${CF_DISTRIBUTION_ID:?Set CF_DISTRIBUTION_ID env var}"
