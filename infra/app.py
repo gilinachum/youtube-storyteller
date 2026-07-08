@@ -144,15 +144,13 @@ gateway_search = GatewaySearchStack(
     prefix="storyteller",
     invoker_role_arns=[
         # dev + prod AgentCore runtime roles (see .bedrock_agentcore.yaml).
-        # Override via env if roles are rotated/recreated.
-        os.environ.get(
-            "STORYTELLER_DEV_RUNTIME_ROLE_ARN",
-            "arn:aws:iam::726941381086:role/AmazonBedrockAgentCoreSDKRuntime-us-west-2-9bda7c8513",
-        ),
-        os.environ.get(
-            "STORYTELLER_PROD_RUNTIME_ROLE_ARN",
-            "arn:aws:iam::726941381086:role/AmazonBedrockAgentCoreSDKRuntime-us-east-1-2a5e1ea1dc",
-        ),
+        # Required — no hardcoded fallback. This stack deploys once and
+        # grants both stages' roles regardless of which stage is currently
+        # being deployed, so it can't reuse the per-stage EXECUTION_ROLE
+        # env var; set both explicitly in .env.dev / .env.prod (or the
+        # shell environment) instead.
+        os.environ["STORYTELLER_DEV_RUNTIME_ROLE_ARN"],
+        os.environ["STORYTELLER_PROD_RUNTIME_ROLE_ARN"],
     ],
     env=gateway_search_env,
 )
