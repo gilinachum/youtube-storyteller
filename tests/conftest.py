@@ -22,6 +22,12 @@ os.environ.setdefault("AWS_ACCESS_KEY_ID", "testing")
 os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "testing")
 os.environ.setdefault("AWS_SECURITY_TOKEN", "testing")
 os.environ.setdefault("AWS_SESSION_TOKEN", "testing")
+# agent/tools/web_research.py requires this at import time (AgentCore Gateway
+# Web Search Tool endpoint). Unit tests that only check importability/mocked
+# behavior don't need a real gateway — set a placeholder so import doesn't
+# raise KeyError. Live integration tests (tests/test_deep_research.py) set
+# the real deployed URL themselves before importing.
+os.environ.setdefault("SEARCH_GATEWAY_URL", "https://placeholder.invalid/mcp")
 
 
 @pytest.fixture

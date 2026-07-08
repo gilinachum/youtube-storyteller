@@ -46,6 +46,7 @@ from stacks.api_stack import ApiStack
 from stacks.frontend_stack import FrontendStack
 from stacks.backup_stack import BackupStack
 from stacks.evaluations_stack import EvaluationsStack
+from stacks.gateway_search_stack import GatewaySearchStack
 
 app = cdk.App()
 
@@ -128,6 +129,33 @@ if runtime_id:
         sampling_percentage=100.0,
         env=env,
     )
+
+# ── Gateway search stack (AgentCore Gateway + Web Search Tool) ──────────
+# Backs agent/tools/web_research.py (replaced Tavily). Pinned to us-east-1
+# regardless of stage — the Web Search Tool connector is us-east-1-only
+# today. Deployed once, independent of the dev/prod stage loop; both
+# stages' AgentCore runtime roles are granted invoke access on this single
+# shared gateway.
+gateway_search_env = cdk.Environment(
+    account=os.environ.get("CDK_DEFAULT_ACCOUNT"), region="us-east-1"
+)
+gateway_search = GatewaySearchStack(
+    app, "storyteller-gateway-search",
+    prefix="storyteller",
+    invoker_role_arns=[
+        # dev + prod AgentCore runtime roles (see .bedrock_agentcore.yaml).
+        # Override via env if roles are rotated/recreated.
+        os.environ.get(
+            "STORYTELLER_DEV_RUNTIME_ROLE_ARN",
+            "arn:aws:iam::726941381086:role/AmazonBedrockAgentCoreSDKRuntime-us-west-2-9bda7c8513",
+        ),
+        os.environ.get(
+            "STORYTELLER_PROD_RUNTIME_ROLE_ARN",
+            "arn:aws:iam::726941381086:role/AmazonBedrockAgentCoreSDKRuntime-us-east-1-2a5e1ea1dc",
+        ),
+    ],
+    env=gateway_search_env,
+)
 
 cdk.Tags.of(app).add("Project", "StoryTeller")
 cdk.Tags.of(app).add("Stage", stage)

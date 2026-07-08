@@ -48,7 +48,6 @@ class ApiStack(Stack):
             resources=[
                 f"arn:aws:secretsmanager:{self.region}:{self.account}:secret:firecrawl/api-key*",
                 f"arn:aws:secretsmanager:{self.region}:{self.account}:secret:perplexity/api-key*",
-                f"arn:aws:secretsmanager:{self.region}:{self.account}:secret:tavily/api-key*",
             ],
         ))
         lambda_role.add_to_policy(iam.PolicyStatement(
@@ -105,7 +104,6 @@ class ApiStack(Stack):
                         actions=["secretsmanager:GetSecretValue"],
                         resources=[
                             f"arn:aws:secretsmanager:{self.region}:{self.account}:secret:firecrawl/*",
-                            f"arn:aws:secretsmanager:{self.region}:{self.account}:secret:tavily/*",
                             f"arn:aws:secretsmanager:{self.region}:{self.account}:secret:gcp/*",
                             f"arn:aws:secretsmanager:{self.region}:{self.account}:secret:storyteller/*",
                             f"arn:aws:secretsmanager:{self.region}:{self.account}:secret:perplexity/*",

@@ -72,6 +72,11 @@ cd "$PROJECT_DIR"
 echo ""
 echo "☁️  Deploying CDK stacks (stage=$STAGE)..."
 cd "$PROJECT_DIR/infra"
+# cdk.json runs `python3 app.py` as a subprocess — it inherits whatever
+# python3 is on PATH, not necessarily the repo's venv where aws_cdk is
+# installed. Activate the venv here so that subprocess resolves aws_cdk
+# (otherwise: "ModuleNotFoundError: No module named 'aws_cdk'").
+source "$PROJECT_DIR/.venv/bin/activate"
 STORYTELLER_DEPLOY_SCRIPT=1 cdk deploy --all --context stage="$STAGE" --require-approval never
 cd "$PROJECT_DIR"
 
@@ -93,6 +98,22 @@ if [[ -n "$AGENT_RUNTIME_ID" ]]; then
   if [[ "$STAGE" == "prod" ]]; then
     AGENT_NAME="storytellerProd"
   fi
+
+  # SEARCH_GATEWAY_URL for the Web Search Tool (agent/tools/web_research.py).
+  # Read from the gateway stack's CFN output rather than hand-copied into
+  # .env.* — the gateway is pinned to us-east-1 and shared by both stages
+  # (see infra/stacks/gateway_search_stack.py), so this is the single
+  # source of truth and avoids drift if the gateway is ever recreated.
+  SEARCH_GATEWAY_URL=$(aws cloudformation describe-stacks \
+    --stack-name storyteller-gateway-search --region us-east-1 \
+    --query "Stacks[0].Outputs[?OutputKey=='GatewayUrl'].OutputValue" \
+    --output text 2>/dev/null || echo "")
+  if [[ -z "$SEARCH_GATEWAY_URL" ]]; then
+    echo "❌ Could not read SEARCH_GATEWAY_URL from storyteller-gateway-search stack output."
+    echo "   Deploy that stack first (it's included in the 'cdk deploy --all' step above)."
+    exit 1
+  fi
+
   uv run agentcore deploy \
     --agent "$AGENT_NAME" \
     --env UPLOAD_BUCKET="$UPLOAD_BUCKET" \
@@ -100,6 +121,7 @@ if [[ -n "$AGENT_RUNTIME_ID" ]]; then
     --env BEDROCK_REGION="$REGION" \
     --env AGENT_MODEL_PROVIDER="$AGENT_MODEL_PROVIDER" \
     --env AGENT_MODEL_ID="$AGENT_MODEL_ID" \
+    --env SEARCH_GATEWAY_URL="$SEARCH_GATEWAY_URL" \
     ${MANTLE_REGION:+--env MANTLE_REGION="$MANTLE_REGION"} \
     --env DEPLOY_TS="$DEPLOY_TS" \
     ${AGENTCORE_MEMORY_ID:+--env AGENTCORE_MEMORY_ID="$AGENTCORE_MEMORY_ID"} \
