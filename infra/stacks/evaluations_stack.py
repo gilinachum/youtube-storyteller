@@ -30,7 +30,12 @@ class EvaluationsStack(Stack):
     ) -> None:
         super().__init__(scope, construct_id, env=env, **kwargs)
 
-        account = env.account or "726941381086"
+        if not env.account:
+            raise ValueError(
+                "EvaluationsStack requires env.account to be set "
+                "(CDK_DEFAULT_ACCOUNT env var) — no hardcoded fallback."
+            )
+        account = env.account
         region = env.region or "us-east-1"
 
         # ── Evaluator list ───────────────────────────────────────────────

@@ -108,7 +108,9 @@ frontend = FrontendStack(app, f"{sp}Frontend" if sp[0].isupper() else f"{cfg['pr
 frontend.add_dependency(api)
 
 # ── Backup stack (DynamoDB daily snapshots) ──────────────────────────────
-account = os.environ.get("CDK_DEFAULT_ACCOUNT", "726941381086")
+# Reuse the already-resolved account from `env` above (set from
+# CDK_DEFAULT_ACCOUNT, required — no hardcoded fallback).
+account = env.account
 table_arns = [
     f"arn:aws:dynamodb:{cfg['region']}:{account}:table/storyteller-sessions",
     f"arn:aws:dynamodb:{cfg['region']}:{account}:table/storyteller-messages",
